@@ -1,8 +1,11 @@
 import type { GameState } from '../../core/game';
-import { runAccuracyPercent, TARGET, WEAPON } from '../../core/game';
+import { activeWeaponSpec, runAccuracyPercent, TARGET } from '../../core/game';
 import { PLAYER_TUNING } from '../../core/player';
+import type { WeaponId, WeaponSlot } from '../../core/weapon';
+import { getWeaponSpec } from '../../core/weapon';
+import type { ScopeOverlayState } from '../view';
 import { el, formatRunTime } from './dom';
-import { createIcon, createM1911Silhouette } from './icons';
+import { createIcon, createWeaponSilhouette } from './icons';
 import { createKeycap } from './keycaps';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -13,11 +16,20 @@ const FEED_MAX_ITEMS = 4;
 const TICK_POP_SECONDS = 0.14;
 const DRY_FIRE_SECONDS = 0.18;
 
+const FIRE_MODE_SHORT: Record<string, string> = {
+  auto: 'AUTO',
+  semi: 'SEMI',
+  pump: 'PUMP',
+  bolt: 'BOLT',
+};
+
 export interface HudFrameInput {
   readonly state: GameState;
   readonly aimBlend: number;
+  readonly scopeOverlay: ScopeOverlayState;
   readonly visible: boolean;
   readonly reducedMotion: boolean;
+  readonly showTacticalFeed: boolean;
 }
 
 interface FeedEntry {
@@ -26,11 +38,87 @@ interface FeedEntry {
   leaving: boolean;
 }
 
+/** Build the AWM 6× First-Focal-Plane Mil-Dot telescopic sniper scope HUD overlay. */
+function buildTelescopicScopeOverlay(): {
+  root: HTMLElement;
+  reticleSvg: SVGSVGElement;
+  zoomTag: HTMLElement;
+} {
+  const root = el('div', 'hud-scope');
+  root.dataset.active = 'false';
+
+  // Radial vignette + circular scope aperture mask via crisp SVG.
+  const reticleSvg = document.createElementNS(SVG_NS, 'svg');
+  reticleSvg.setAttribute('viewBox', '0 0 1000 1000');
+  reticleSvg.setAttribute('class', 'hud-scope__reticle');
+  reticleSvg.setAttribute('aria-hidden', 'true');
+
+  // Subtle dark outer glass bevel ring inside aperture.
+  const lensRim = document.createElementNS(SVG_NS, 'circle');
+  lensRim.setAttribute('cx', '500');
+  lensRim.setAttribute('cy', '500');
+  lensRim.setAttribute('r', '468');
+  lensRim.setAttribute('fill', 'none');
+  lensRim.setAttribute('stroke', 'rgba(8, 11, 16, 0.92)');
+  lensRim.setAttribute('stroke-width', '28');
+
+  const glassEdge = document.createElementNS(SVG_NS, 'circle');
+  glassEdge.setAttribute('cx', '500');
+  glassEdge.setAttribute('cy', '500');
+  glassEdge.setAttribute('r', '452');
+  glassEdge.setAttribute('fill', 'none');
+  glassEdge.setAttribute('stroke', 'rgba(180, 210, 232, 0.14)');
+  glassEdge.setAttribute('stroke-width', '2');
+
+  // Heavy outer duplex stadia posts (9, 3, 6 o'clock; thin 12 o'clock stadia).
+  const heavyPosts = document.createElementNS(SVG_NS, 'path');
+  heavyPosts.setAttribute('d', 'M 48 500 H 255 M 745 500 H 952 M 500 745 V 952');
+  heavyPosts.setAttribute('stroke', '#0c0f14');
+  heavyPosts.setAttribute('stroke-width', '6.5');
+
+  // Fine precision inner crosshair hairs.
+  const fineHairs = document.createElementNS(SVG_NS, 'path');
+  fineHairs.setAttribute('d', 'M 255 500 H 484 M 516 500 H 745 M 500 140 V 484 M 500 516 V 745');
+  fineHairs.setAttribute('stroke', 'rgba(12, 16, 22, 0.92)');
+  fineHairs.setAttribute('stroke-width', '1.8');
+
+  // Mil-dot stadia hash marks along horizontal & vertical holdover axes.
+  const ticks: string[] = [];
+  for (let i = 1; i <= 5; i++) {
+    const off = i * 44;
+    const len = i % 2 === 0 ? 11 : 7;
+    ticks.push(`M ${500 - off} ${500 - len} V ${500 + len}`);
+    ticks.push(`M ${500 + off} ${500 - len} V ${500 + len}`);
+    ticks.push(`M ${500 - len} ${500 + off} H ${500 + len}`);
+    if (i <= 3) ticks.push(`M ${500 - len} ${500 - off} H ${500 + len}`);
+  }
+  const stadia = document.createElementNS(SVG_NS, 'path');
+  stadia.setAttribute('d', ticks.join(' '));
+  stadia.setAttribute('stroke', 'rgba(14, 18, 24, 0.9)');
+  stadia.setAttribute('stroke-width', '2');
+
+  // Illuminated central precision micro-dot (dead centre on (500, 500) = firing ray!).
+  const centerGlow = document.createElementNS(SVG_NS, 'circle');
+  centerGlow.setAttribute('cx', '500');
+  centerGlow.setAttribute('cy', '500');
+  centerGlow.setAttribute('r', '4.2');
+  centerGlow.setAttribute('fill', '#ff3a2c');
+
+  reticleSvg.append(lensRim, glassEdge, heavyPosts, fineHairs, stadia, centerGlow);
+
+  const zoomTag = el('span', 'hud-scope__zoom', '6.0× FFP');
+  root.append(reticleSvg, zoomTag);
+  return { root, reticleSvg, zoomTag };
+}
+
 export function createHudView(container: HTMLElement, totalTargets: number) {
   const layer = el('div', 'hud-layer');
   layer.dataset.visible = 'true';
 
-  // 1. Top Objective Tracker (Targets Down, 10-segment bar, live Run Timer)
+  // 0. Full-Screen Telescopic Sniper Scope Overlay (AWM 6×)
+  const scope = buildTelescopicScopeOverlay();
+
+  // 1. Top Objective Tracker (Targets Down, adaptive N-segment bar, live Run Timer)
   const objective = el('section', 'hud-plate hud-objective');
   objective.setAttribute('aria-label', 'Course progress');
   const objectiveTop = el('div', 'hud-objective__top');
@@ -52,6 +140,7 @@ export function createHudView(container: HTMLElement, totalTargets: number) {
   objectiveTop.append(targetGroup, timerGroup);
 
   const segmentBar = el('div', 'hud-objective__segments');
+  segmentBar.style.gridTemplateColumns = `repeat(${Math.max(1, totalTargets)}, 1fr)`;
   const segments = Array.from({ length: totalTargets }, () => {
     const seg = el('span', 'hud-segment');
     seg.dataset.down = 'false';
@@ -99,7 +188,23 @@ export function createHudView(container: HTMLElement, totalTargets: number) {
   sprintPill.append(createIcon('sprint'), el('span', undefined, 'Sprint'));
   stanceWrap.append(leanLeftPill, leanRightPill, sprintPill);
 
-  // 6. Bottom-Right Weapon & Ammo Panel
+  // 6. Bottom-Right Weapon & Ammo Cluster (Slot Switcher Strip + Dynamic Weapon Plate)
+  const weaponCluster = el('div', 'hud-weapon-cluster');
+
+  // Compact [1] Primary / [2] Secondary carry indicator strip
+  const slotStrip = el('div', 'hud-slots');
+  const makeSlotChip = (num: '1' | '2') => {
+    const chip = el('div', 'hud-slot-chip');
+    chip.dataset.active = 'false';
+    const key = createKeycap(num);
+    const name = el('span', 'hud-slot-chip__name', '');
+    chip.append(key, name);
+    return { chip, name };
+  };
+  const primaryChip = makeSlotChip('1');
+  const secondaryChip = makeSlotChip('2');
+  slotStrip.append(primaryChip.chip, secondaryChip.chip);
+
   const weaponPanel = el('section', 'hud-plate hud-weapon');
   weaponPanel.setAttribute('aria-label', 'Weapon and ammunition');
   weaponPanel.dataset.ammoState = 'normal';
@@ -108,29 +213,25 @@ export function createHudView(container: HTMLElement, totalTargets: number) {
   const weaponMain = el('div', 'hud-weapon__main');
   const weaponCounts = el('div', 'hud-weapon__counts');
   const weaponNumerals = el('div', 'hud-weapon__numerals');
-  const roundsCurrent = el('span', 'hud-weapon__rounds', String(WEAPON.magazineSize));
-  const roundsCapacity = el('span', 'hud-weapon__capacity', `/ ${WEAPON.magazineSize}`);
+  const roundsCurrent = el('span', 'hud-weapon__rounds', '30');
+  const roundsCapacity = el('span', 'hud-weapon__capacity', '/ 30');
   const statusTag = el('span', 'hud-weapon__status-tag');
   statusTag.hidden = true;
   weaponNumerals.append(roundsCurrent, roundsCapacity, statusTag);
 
   const pipsRow = el('div', 'hud-weapon__pips');
-  const pips = Array.from({ length: WEAPON.magazineSize }, () => {
-    const pip = el('span', 'hud-pip');
-    pip.dataset.filled = 'true';
-    pipsRow.append(pip);
-    return pip;
-  });
+  let pips: HTMLElement[] = [];
   weaponCounts.append(weaponNumerals, pipsRow);
 
   const weaponDivider = el('div', 'hud-weapon__divider');
   const weaponProfile = el('div', 'hud-weapon__profile');
-  const weaponSvg = createM1911Silhouette();
+  const weaponSvgHost = el('div', 'hud-weapon__svg-host');
   const weaponMeta = el('div', 'hud-weapon__meta');
-  const weaponCaliber = el('span', 'hud-weapon__caliber', '.45 ACP');
-  const weaponName = el('span', 'hud-weapon__name', WEAPON.name);
-  weaponMeta.append(weaponCaliber, weaponName);
-  weaponProfile.append(weaponSvg, weaponMeta);
+  const weaponMode = el('span', 'hud-weapon__mode', 'AUTO');
+  const weaponCaliber = el('span', 'hud-weapon__caliber', '5.56×45mm');
+  const weaponName = el('span', 'hud-weapon__name', 'HK416');
+  weaponMeta.append(weaponMode, weaponCaliber, weaponName);
+  weaponProfile.append(weaponSvgHost, weaponMeta);
 
   weaponMain.append(weaponCounts, weaponDivider, weaponProfile);
 
@@ -138,7 +239,7 @@ export function createHudView(container: HTMLElement, totalTargets: number) {
   reloadWrap.hidden = true;
   const reloadHeader = el('div', 'hud-weapon__reload-header');
   const reloadLabel = el('span', undefined, 'Reloading');
-  const reloadTimeLeft = el('span', 'ui-tabular', '2.1s');
+  const reloadTimeLeft = el('span', 'ui-tabular', '2.2s');
   reloadHeader.append(reloadLabel, reloadTimeLeft);
   const reloadTrack = el('div', 'hud-weapon__reload-track');
   const reloadFill = el('div', 'hud-weapon__reload-fill');
@@ -146,6 +247,7 @@ export function createHudView(container: HTMLElement, totalTargets: number) {
   reloadWrap.append(reloadHeader, reloadTrack);
 
   weaponPanel.append(weaponMain, reloadWrap);
+  weaponCluster.append(slotStrip, weaponPanel);
 
   // 7. Stacked Event Feed (Target Down + Distance)
   const feedWrap = el('div', 'hud-feed');
@@ -185,12 +287,13 @@ export function createHudView(container: HTMLElement, totalTargets: number) {
   banner.append(ruleTop, bannerEyebrow, bannerTitle, bannerStats, bannerReset, ruleBottom);
 
   layer.append(
+    scope.root,
     objective,
     crosshair,
     hitMarker,
     reloadPrompt,
     stanceWrap,
-    weaponPanel,
+    weaponCluster,
     feedWrap,
     banner,
   );
@@ -198,6 +301,9 @@ export function createHudView(container: HTMLElement, totalTargets: number) {
 
   // Cached state to avoid unnecessary DOM writes in the 60+ Hz frame loop
   let shownVisible = true;
+  let shownWeaponId: WeaponId | null = null;
+  let shownSlotKey = '';
+  let shownActiveSlot: WeaponSlot | null = null;
   let shownDown = -1;
   let shownCleared = false;
   let shownTimer = '';
@@ -211,6 +317,7 @@ export function createHudView(container: HTMLElement, totalTargets: number) {
   let shownLeanL = false;
   let shownLeanR = false;
   let shownSprint = false;
+  let shownFeedVisible = true;
   let shownBannerOpen = false;
   let shownBannerStatsKey = '';
   let shownResetText = '';
@@ -225,6 +332,28 @@ export function createHudView(container: HTMLElement, totalTargets: number) {
   let dryFireTimer = 0;
   const feedItems: FeedEntry[] = [];
 
+  function syncWeaponPresentation(weaponId: WeaponId) {
+    const spec = getWeaponSpec(weaponId);
+    shownWeaponId = weaponId;
+    shownRounds = -1; // Force pip & counter refresh for new magazine size.
+
+    weaponSvgHost.replaceChildren(createWeaponSilhouette(weaponId, 'hud-weapon-svg'));
+    weaponName.textContent = spec.name;
+    weaponCaliber.textContent = spec.caliber;
+    weaponMode.textContent = FIRE_MODE_SHORT[spec.fireMode] ?? spec.fireMode.toUpperCase();
+    roundsCapacity.textContent = `/ ${spec.magazineSize}`;
+
+    // Compact pip styling for 20-30 round rifle/SMG magazines so pips never wrap awkwardly.
+    pipsRow.dataset.density = spec.magazineSize > 12 ? 'compact' : 'standard';
+    pipsRow.replaceChildren();
+    pips = Array.from({ length: spec.magazineSize }, () => {
+      const pip = el('span', 'hud-pip');
+      pip.dataset.filled = 'true';
+      pipsRow.append(pip);
+      return pip;
+    });
+  }
+
   function pushFeed(distanceMetres: number, downCount: number) {
     const row = el('div', 'hud-feed__item');
     row.dataset.entering = 'true';
@@ -232,7 +361,6 @@ export function createHudView(container: HTMLElement, totalTargets: number) {
     const dist = el('span', 'hud-feed__distance', `${distanceMetres.toFixed(1)} m`);
     row.append(createIcon('target'), label, dist);
     feedWrap.prepend(row);
-    // Trigger slide-in on the next frame without forcing layout synchronous reflow.
     requestAnimationFrame(() => {
       row.dataset.entering = 'false';
     });
@@ -277,14 +405,51 @@ export function createHudView(container: HTMLElement, totalTargets: number) {
     },
 
     update(dt: number, input: HudFrameInput) {
-      const { state, aimBlend, visible, reducedMotion } = input;
+      const { state, aimBlend, scopeOverlay, visible, reducedMotion, showTacticalFeed } = input;
+      const spec = activeWeaponSpec(state);
 
       if (visible !== shownVisible) {
         shownVisible = visible;
         layer.dataset.visible = visible ? 'true' : 'false';
       }
 
-      // Advance transient timers even if fading
+      if (showTacticalFeed !== shownFeedVisible) {
+        shownFeedVisible = showTacticalFeed;
+        feedWrap.hidden = !showTacticalFeed;
+        stanceWrap.hidden = !showTacticalFeed;
+      }
+
+      // Telescopic sniper scope overlay (rotates cleanly around dead-centre (50%, 50%) on lean!).
+      if (scopeOverlay.active && visible) {
+        scope.root.dataset.active = 'true';
+        scope.root.style.opacity = scopeOverlay.opacity.toFixed(3);
+        const deg = (scopeOverlay.cantRad * 180) / Math.PI;
+        scope.reticleSvg.style.transform = `translate(-50%, -50%) rotate(${deg.toFixed(2)}deg)`;
+        scope.zoomTag.textContent = `${scopeOverlay.zoom.toFixed(1)}× FFP`;
+      } else if (scope.root.dataset.active !== 'false') {
+        scope.root.dataset.active = 'false';
+        scope.root.style.opacity = '0';
+      }
+
+      // Sync weapon silhouette, name, calibre, and adaptive pips when active weapon changes.
+      if (state.weapon.weaponId !== shownWeaponId) {
+        syncWeaponPresentation(state.weapon.weaponId);
+      }
+
+      // Sync Primary [1] / Secondary [2] quick-slot strip.
+      const slotKey = `${state.weapon.loadout.primary}|${state.weapon.loadout.secondary}`;
+      if (slotKey !== shownSlotKey) {
+        shownSlotKey = slotKey;
+        primaryChip.name.textContent = getWeaponSpec(state.weapon.loadout.primary).name;
+        secondaryChip.name.textContent = getWeaponSpec(state.weapon.loadout.secondary).name;
+      }
+      if (state.weapon.activeSlot !== shownActiveSlot) {
+        shownActiveSlot = state.weapon.activeSlot;
+        primaryChip.chip.dataset.active = state.weapon.activeSlot === 'primary' ? 'true' : 'false';
+        secondaryChip.chip.dataset.active =
+          state.weapon.activeSlot === 'secondary' ? 'true' : 'false';
+      }
+
       if (tickPopTimer > 0) {
         tickPopTimer = Math.max(0, tickPopTimer - dt);
         if (tickPopTimer === 0) delete roundsCurrent.dataset.tick;
@@ -357,16 +522,17 @@ export function createHudView(container: HTMLElement, totalTargets: number) {
         timerValue.dataset.active = state.run.active ? 'true' : 'false';
       }
 
-      // Dynamic crosshair spread & ADS fade (also hides cleanly during Course Cleared banner)
+      // Dynamic crosshair spread & ADS fade (widens slightly for shotgun buckshot!)
       const bannerOpen = cleared && state.resetIn > 0;
       const planarSpeed = Math.hypot(state.player.velocity.x, state.player.velocity.z);
       const moveFactor = Math.min(1.5, planarSpeed / PLAYER_TUNING.walkSpeed);
       const airPenalty = state.player.grounded ? 0 : 8.5;
       const recoilPenalty = Math.min(10, state.weapon.recoil * 95);
+      const shotgunGap = spec.pellets > 1 ? 8.5 : 0;
       shotKick = Math.max(0, shotKick - dt * 34);
       const targetGap = reducedMotion
-        ? 5
-        : 4.5 + moveFactor * 6.5 + airPenalty + recoilPenalty + shotKick;
+        ? 5 + shotgunGap
+        : 4.5 + shotgunGap + moveFactor * 6.5 + airPenalty + recoilPenalty + shotKick;
       const blend = 1 - Math.exp(-18 * Math.max(dt, 0.001));
       spreadGap += (targetGap - spreadGap) * blend;
 
@@ -379,7 +545,8 @@ export function createHudView(container: HTMLElement, totalTargets: number) {
         armRight.style.transform = `translate3d(${roundedGap}px, 0, 0)`;
       }
 
-      const crosshairOpacity = bannerOpen ? 0 : Math.max(0, Math.min(1, 1 - aimBlend * 1.25));
+      const crosshairOpacity =
+        bannerOpen || scopeOverlay.active ? 0 : Math.max(0, Math.min(1, 1 - aimBlend * 1.25));
       const roundedOpacity = Math.round(crosshairOpacity * 100) / 100;
       if (roundedOpacity !== lastCrosshairOpacity) {
         lastCrosshairOpacity = roundedOpacity;
@@ -389,6 +556,7 @@ export function createHudView(container: HTMLElement, totalTargets: number) {
       // Weapon & Ammo panel
       const rounds = state.weapon.rounds;
       const reloading = state.weapon.reloadRemaining > 0;
+      const lowLimit = Math.max(1, Math.min(8, Math.ceil(spec.magazineSize * 0.25)));
 
       if (rounds !== shownRounds) {
         shownRounds = rounds;
@@ -399,7 +567,7 @@ export function createHudView(container: HTMLElement, totalTargets: number) {
         }
       }
 
-      const ammoState = rounds === 0 ? 'empty' : rounds <= 2 ? 'low' : 'normal';
+      const ammoState = rounds === 0 ? 'empty' : rounds <= lowLimit ? 'low' : 'normal';
       if (ammoState !== shownAmmoState) {
         shownAmmoState = ammoState;
         weaponPanel.dataset.ammoState = ammoState;
@@ -409,7 +577,7 @@ export function createHudView(container: HTMLElement, totalTargets: number) {
         ? 'reload'
         : rounds === 0
           ? 'empty'
-          : rounds <= 2
+          : rounds <= lowLimit
             ? 'low'
             : 'none';
       if (statusTone !== shownStatusTone) {
@@ -429,7 +597,6 @@ export function createHudView(container: HTMLElement, totalTargets: number) {
         weaponPanel.dataset.reloading = reloading ? 'true' : 'false';
         reloadWrap.hidden = !reloading;
         if (!reloading) {
-          // Snap pips cleanly back to current full count on reload completion
           for (let i = 0; i < pips.length; i++) {
             const pip = pips[i];
             if (pip) pip.dataset.filled = i < rounds ? 'true' : 'false';
@@ -440,7 +607,7 @@ export function createHudView(container: HTMLElement, totalTargets: number) {
       if (reloading) {
         const progress = Math.max(
           0,
-          Math.min(1, 1 - state.weapon.reloadRemaining / WEAPON.reloadTime),
+          Math.min(1, 1 - state.weapon.reloadRemaining / spec.reloadTime),
         );
         reloadFill.style.transform = `scaleX(${progress.toFixed(3)})`;
         const secText = `${Math.max(0, state.weapon.reloadRemaining).toFixed(1)}s`;
@@ -452,7 +619,13 @@ export function createHudView(container: HTMLElement, totalTargets: number) {
 
       // Contextual Reload Prompt
       const promptState =
-        reloading || cleared ? 'hidden' : rounds === 0 ? 'empty' : rounds <= 2 ? 'low' : 'hidden';
+        reloading || cleared
+          ? 'hidden'
+          : rounds === 0
+            ? 'empty'
+            : rounds <= lowLimit
+              ? 'low'
+              : 'hidden';
       if (promptState !== shownPromptState) {
         shownPromptState = promptState;
         reloadPrompt.dataset.state = promptState;

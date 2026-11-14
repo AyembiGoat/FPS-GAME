@@ -1,15 +1,22 @@
+import type { InputMode } from '../input';
+
 export type CrosshairColorId = 'white' | 'brass' | 'cyan' | 'green' | 'red';
 export type CrosshairSizeId = 'small' | 'medium' | 'large';
 
 export interface GameSettings {
   readonly mouseSensitivity: number;
   readonly adsSensitivity: number;
+  readonly aimMode: InputMode;
+  readonly leanMode: InputMode;
+  readonly scrollWeaponSwitch: boolean;
   readonly fov: number;
+  readonly reducedMotion: boolean;
+  readonly showTacticalFeed: boolean;
   readonly masterVolume: number;
+  readonly uiAudioCues: boolean;
   readonly crosshairColor: CrosshairColorId;
   readonly crosshairSize: CrosshairSizeId;
   readonly hudScale: number;
-  readonly reducedMotion: boolean;
 }
 
 export const CROSSHAIR_COLORS: Readonly<
@@ -41,12 +48,17 @@ export function createDefaultSettings(): GameSettings {
   return {
     mouseSensitivity: 1,
     adsSensitivity: 1,
+    aimMode: 'hold',
+    leanMode: 'hold',
+    scrollWeaponSwitch: true,
     fov: 78,
+    reducedMotion: prefersReducedMotionDefault(),
+    showTacticalFeed: true,
     masterVolume: 0.8,
+    uiAudioCues: true,
     crosshairColor: 'white',
     crosshairSize: 'medium',
     hudScale: 1,
-    reducedMotion: prefersReducedMotionDefault(),
   };
 }
 
@@ -68,14 +80,32 @@ function isCrosshairSize(raw: unknown): raw is CrosshairSizeId {
   return raw === 'small' || raw === 'medium' || raw === 'large';
 }
 
+function isInputMode(raw: unknown): raw is InputMode {
+  return raw === 'hold' || raw === 'toggle';
+}
+
 export function sanitizeSettings(raw: unknown, defaults = createDefaultSettings()): GameSettings {
   if (typeof raw !== 'object' || raw === null) return defaults;
   const record = raw as Record<string, unknown>;
   return {
     mouseSensitivity: asNumber(record.mouseSensitivity, defaults.mouseSensitivity, 0.2, 3, 0.05),
     adsSensitivity: asNumber(record.adsSensitivity, defaults.adsSensitivity, 0.25, 2, 0.05),
+    aimMode: isInputMode(record.aimMode) ? record.aimMode : defaults.aimMode,
+    leanMode: isInputMode(record.leanMode) ? record.leanMode : defaults.leanMode,
+    scrollWeaponSwitch:
+      typeof record.scrollWeaponSwitch === 'boolean'
+        ? record.scrollWeaponSwitch
+        : defaults.scrollWeaponSwitch,
     fov: asNumber(record.fov, defaults.fov, 65, 105, 1),
+    reducedMotion:
+      typeof record.reducedMotion === 'boolean' ? record.reducedMotion : defaults.reducedMotion,
+    showTacticalFeed:
+      typeof record.showTacticalFeed === 'boolean'
+        ? record.showTacticalFeed
+        : defaults.showTacticalFeed,
     masterVolume: asNumber(record.masterVolume, defaults.masterVolume, 0, 1, 0.05),
+    uiAudioCues:
+      typeof record.uiAudioCues === 'boolean' ? record.uiAudioCues : defaults.uiAudioCues,
     crosshairColor: isCrosshairColor(record.crosshairColor)
       ? record.crosshairColor
       : defaults.crosshairColor,
@@ -83,8 +113,6 @@ export function sanitizeSettings(raw: unknown, defaults = createDefaultSettings(
       ? record.crosshairSize
       : defaults.crosshairSize,
     hudScale: asNumber(record.hudScale, defaults.hudScale, 0.85, 1.2, 0.05),
-    reducedMotion:
-      typeof record.reducedMotion === 'boolean' ? record.reducedMotion : defaults.reducedMotion,
   };
 }
 
@@ -119,18 +147,10 @@ export function createSettingsStore() {
 
     update(patch: Partial<GameSettings>) {
       const next = sanitizeSettings({ ...current, ...patch }, defaults);
-      if (
-        next.mouseSensitivity === current.mouseSensitivity &&
-        next.adsSensitivity === current.adsSensitivity &&
-        next.fov === current.fov &&
-        next.masterVolume === current.masterVolume &&
-        next.crosshairColor === current.crosshairColor &&
-        next.crosshairSize === current.crosshairSize &&
-        next.hudScale === current.hudScale &&
-        next.reducedMotion === current.reducedMotion
-      ) {
-        return;
-      }
+      const changed = (Object.keys(defaults) as (keyof GameSettings)[]).some(
+        (key) => next[key] !== current[key],
+      );
+      if (!changed) return;
       current = next;
       persist();
       notify();

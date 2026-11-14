@@ -3,29 +3,34 @@ import './hud.css';
 import './menus.css';
 
 import type { GameEvent, GameState } from '../../core/game';
+import type { WeaponId } from '../../core/weapon';
 import type { GameAudio } from '../audio';
+import type { ScopeOverlayState } from '../view';
 import { createControlsScreen } from './controlsScreen';
 import { el } from './dom';
 import { createHudView } from './hudView';
+import type { LoadoutStore } from './loadout';
+import { createLoadoutScreen } from './loadoutScreen';
 import { createIntroScreen, createPauseScreen, createTitleScreen } from './menuScreens';
 import type { SettingsStore } from './settings';
 import { CROSSHAIR_COLORS, CROSSHAIR_SIZES } from './settings';
 import { createSettingsScreen } from './settingsScreen';
 
-export type ScreenName = 'playing' | 'title' | 'pause' | 'settings' | 'controls';
+export type ScreenName = 'playing' | 'title' | 'pause' | 'loadout' | 'settings' | 'controls';
 
 export interface GameUiOptions {
   readonly mode: 'auto' | 'bot' | 'play';
   readonly totalTargets: number;
   readonly audio: GameAudio;
   readonly settings: SettingsStore;
-  readonly onRequestPlay: () => void;
+  readonly loadout: LoadoutStore;
+  readonly onRequestPlay: (deployWeaponId?: WeaponId) => void;
   readonly onRestartRun: () => void;
   readonly onQuitToTitle: () => void;
 }
 
 export function createGameUi(options: GameUiOptions) {
-  const { mode, totalTargets, audio, settings } = options;
+  const { mode, totalTargets, audio, settings, loadout } = options;
 
   const root = el('div', 'ui-root');
   document.body.append(root);
@@ -46,6 +51,10 @@ export function createGameUi(options: GameUiOptions) {
       setScreen('playing');
       options.onRequestPlay();
     },
+    onLoadout: () => {
+      returnScreen = 'title';
+      setScreen('loadout');
+    },
     onSettings: () => {
       returnScreen = 'title';
       setScreen('settings');
@@ -60,6 +69,10 @@ export function createGameUi(options: GameUiOptions) {
     onResume: () => {
       setScreen('playing');
       options.onRequestPlay();
+    },
+    onLoadout: () => {
+      returnScreen = 'pause';
+      setScreen('loadout');
     },
     onRestart: () => {
       hud.clearFeed();
@@ -83,6 +96,17 @@ export function createGameUi(options: GameUiOptions) {
     },
   });
 
+  const loadoutScreen = createLoadoutScreen(root, loadout, audio, {
+    onBack: () => {
+      setScreen(returnScreen);
+    },
+    onDeploy: (weaponId) => {
+      sessionStarted = true;
+      setScreen('playing');
+      options.onRequestPlay(weaponId);
+    },
+  });
+
   const settingsScreen = createSettingsScreen(root, settings, audio, () => {
     setScreen(returnScreen);
   });
@@ -94,6 +118,7 @@ export function createGameUi(options: GameUiOptions) {
   function applyScreenStates() {
     titleScreen.setActive(currentScreen === 'title');
     pauseScreen.setActive(currentScreen === 'pause');
+    loadoutScreen.setActive(currentScreen === 'loadout');
     settingsScreen.setActive(currentScreen === 'settings');
     controlsScreen.setActive(currentScreen === 'controls');
 
@@ -111,6 +136,11 @@ export function createGameUi(options: GameUiOptions) {
     applyScreenStates();
   }
 
+  loadout.subscribe((current) => {
+    titleScreen.syncLoadout(current);
+    pauseScreen.syncLoadout(current);
+  });
+
   settings.subscribe((current) => {
     root.dataset.reducedMotion = current.reducedMotion ? 'true' : 'false';
     document.documentElement.style.setProperty('--ui-hud-scale', String(current.hudScale));
@@ -123,6 +153,7 @@ export function createGameUi(options: GameUiOptions) {
       String(CROSSHAIR_SIZES[current.crosshairSize].scale),
     );
     audio.setVolume(current.masterVolume);
+    audio.setUiCuesEnabled(current.uiAudioCues);
   });
 
   let introHandle: { skip: () => void } | null = null;
@@ -153,10 +184,18 @@ export function createGameUi(options: GameUiOptions) {
       if (next === 'playing') sessionStarted = true;
       if (next === 'title') sessionStarted = false;
       if (next === 'pause' && latestState) pauseScreen.syncTelemetry(latestState);
-      if (next === 'settings' || next === 'controls') {
+      if (next === 'loadout' || next === 'settings' || next === 'controls') {
         returnScreen = sessionStarted ? 'pause' : 'title';
       }
       setScreen(next);
+    },
+
+    inspectLoadoutWeapon(weaponId: WeaponId) {
+      loadoutScreen.inspect(weaponId);
+    },
+
+    selectSettingsTab(tab: 'controls' | 'gameplay' | 'audio' | 'interface') {
+      settingsScreen.selectTab(tab);
     },
 
     onPointerLockChanged(locked: boolean, latestState: GameState) {
@@ -174,7 +213,6 @@ export function createGameUi(options: GameUiOptions) {
     handleEvents(events: readonly GameEvent[], state: GameState) {
       const totalDown = state.targetsDown.filter(Boolean).length;
       const fallenEvents = events.filter((e) => e.type === 'target-down');
-      // If multiple targets dropped in one step, count upwards cleanly.
       let runningDown = totalDown - fallenEvents.length;
 
       for (const event of events) {
@@ -201,15 +239,18 @@ export function createGameUi(options: GameUiOptions) {
       }
     },
 
-    update(dt: number, state: GameState, aimBlend: number) {
+    update(dt: number, state: GameState, aimBlend: number, scopeOverlay: ScopeOverlayState) {
       if (currentScreen === 'pause') {
         pauseScreen.syncTelemetry(state);
       }
+      const s = settings.get();
       hud.update(dt, {
         state,
         aimBlend,
+        scopeOverlay,
         visible: currentScreen === 'playing',
-        reducedMotion: settings.get().reducedMotion,
+        reducedMotion: s.reducedMotion,
+        showTacticalFeed: s.showTacticalFeed,
       });
     },
   };
