@@ -3,8 +3,9 @@
 A first-person shooter that runs in the browser, built with TypeScript and Three.js.
 
 **Status: first playable slice.** One small map, Shoot House, with walls you cannot
-walk through, an M1911 pistol, and eight steel targets that fall when hit and stand
-back up once all are down. Single-player. There are no enemies yet.
+walk through, an M1911 pistol held in two hands, and ten steel targets that fall when
+hit and stand back up once all are down. You can aim down the sights and lean round
+corners. Single-player. There are no enemies yet.
 
 ## Quick start
 
@@ -17,15 +18,17 @@ npm run dev
 
 Open the printed URL and click to capture the mouse.
 
-| Input      | Action |
-| ---------- | ------ |
-| W A S D    | Move   |
-| Mouse      | Look   |
-| Left click | Fire   |
-| R          | Reload |
-| Space      | Jump   |
-| Left Shift | Sprint |
-| Esc        | Pause  |
+| Input              | Action              |
+| ------------------ | ------------------- |
+| W A S D            | Move                |
+| Mouse              | Look                |
+| Left click         | Fire                |
+| Right click (hold) | Aim down the sights |
+| Q / E (hold)       | Lean left / right   |
+| R                  | Reload              |
+| Space              | Jump                |
+| Left Shift         | Sprint              |
+| Esc                | Pause               |
 
 Add `?bot` to the URL to watch the bot play.
 
@@ -63,7 +66,10 @@ Add `?bot` to the URL to watch the bot play.
 src/
   core/       Game rules: movement, collision, weapon, targets, bot. Pure and unit tested
   core/maps/  Levels, as data
-  game/       Browser shell: rendering, sound, input, HUD
+  game/       Browser shell: rendering, input, HUD
+  game/materials/  The shared texture library
+  game/weapons/    Gun models and the arms that hold them
+  game/audio/      Sound
 scripts/      Headless-browser playtest
 reference/    The reference images the visuals were built from
 .agents/      Playbooks (skills) for AI agents, indexed in skills.md
@@ -75,8 +81,9 @@ fixed 60 Hz and the renderer interpolates between steps, so the game behaves the
 at any frame rate and can be tested without a screen. Lint rules enforce the boundary.
 It is also what will let the same rules run on a server when multiplayer is added.
 
-Everything on screen is generated at start-up: the pistol is built in code, textures
-are drawn to canvases and sounds are synthesised. There are no asset files yet.
+Everything on screen is generated at start-up: the pistol and arms are built in code,
+surfaces come from one shared texture library and sounds are synthesised. There are no
+asset files yet.
 
 ## Working with AI agents
 
@@ -84,7 +91,7 @@ are drawn to canvases and sounds are synthesised. There are no asset files yet.
 AI slop, always work from a reference image, verify before committing, and explain the
 result to the owner in plain language. `CLAUDE.md` points to it.
 
-[`skills.md`](skills.md) lists the playbooks in `.agents/skills/`. Seven are written for
+[`skills.md`](skills.md) lists the playbooks in `.agents/skills/`. Eleven are written for
 this project. Five are vendored: two from Anthropic's skills repository and three from
 Theo Browne's tstack. `.claude/skills` is a symbolic link to that folder; on Windows,
 enable symlinks in Git (`git config core.symlinks true`) before cloning.
@@ -92,7 +99,6 @@ enable symlinks in Git (`git config core.symlinks true`) before cloning.
 ## Not yet done
 
 - Enemies
-- Hands and arms on the weapon; the pistol currently floats
 - Real 3D model and texture files in place of the code-built ones
 - Ramps, stairs and rotated walls (collision handles upright boxes only)
 - Multiplayer

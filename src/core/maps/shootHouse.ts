@@ -1,8 +1,10 @@
 import type { GameMap, MapSolid, SurfaceMaterial } from '../map';
 
 /**
- * Shoot House: an open-top training yard. A concrete perimeter wall encloses two
- * plywood buildings either side of a central lane. Built from reference/shoot-house.png.
+ * Shoot House: an open-top training yard, 32 m by 24 m. A concrete perimeter wall
+ * encloses two plywood buildings either side of a central lane, with free-standing
+ * barricades in the lane and an alley running round the back.
+ * Built from reference/shoot-house.png.
  */
 
 const PERIMETER_HEIGHT = 3.6;
@@ -50,45 +52,57 @@ const h = PLY_HALF;
 
 export const shootHouse: GameMap = {
   name: 'Shoot House',
-  bounds: { minX: -12, maxX: 12, minZ: -9, maxZ: 9 },
-  spawn: { position: { x: 0, y: 0, z: 7.5 }, yaw: 0 },
+  bounds: { minX: -16, maxX: 16, minZ: -12, maxZ: 12 },
+  spawn: { position: { x: 0, y: 0, z: 10.5 }, yaw: 0 },
   solids: [
-    box(-12.4, -0.5, -9.4, 12.4, 0, 9.4, 'floor'),
+    box(-16.4, -0.5, -12.4, 16.4, 0, 12.4, 'floor'),
 
-    box(-12.4, 0, -9.4, 12.4, PERIMETER_HEIGHT, -9, 'concrete'),
-    box(-12.4, 0, 9, 12.4, PERIMETER_HEIGHT, 9.4, 'concrete'),
-    box(-12.4, 0, -9, -12, PERIMETER_HEIGHT, 9, 'concrete'),
-    box(12, 0, -9, 12.4, PERIMETER_HEIGHT, 9, 'concrete'),
+    box(-16.4, 0, -12.4, 16.4, PERIMETER_HEIGHT, -12, 'concrete'),
+    box(-16.4, 0, 12, 16.4, PERIMETER_HEIGHT, 12.4, 'concrete'),
+    box(-16.4, 0, -12, -16, PERIMETER_HEIGHT, 12, 'concrete'),
+    box(16, 0, -12, 16.4, PERIMETER_HEIGHT, 12, 'concrete'),
 
-    // West building: x -10..-3.5, z -6..3.
-    ...plyX(3, -10 - h, -3.5 + h, [-7.4, -6.2]),
-    ...plyX(-6, -10 - h, -3.5 + h),
-    ...plyZ(-10, -6 + h, 3 - h),
-    ...plyZ(-3.5, -6 + h, 3 - h, [-2.6, -1.4]),
-    ...plyX(-1, -10 + h, -6.5),
+    // West building: x -13..-5, z -8..3. Three rooms.
+    ...plyX(3, -13 - h, -5 + h, [-9.6, -8.4]),
+    ...plyX(-8, -13 - h, -5 + h),
+    ...plyZ(-13, -8 + h, 3 - h),
+    ...plyZ(-5, -8 + h, 3 - h, [-3.6, -2.4]),
+    ...plyX(-2, -13 + h, -8.5),
+    ...plyZ(-9, -8 + h, -5.2),
 
-    // East building: x 3.5..10, z -6..3.
-    ...plyX(3, 3.5 - h, 10 + h, [6.2, 7.4]),
-    ...plyX(-6, 3.5 - h, 10 + h),
-    ...plyZ(10, -6 + h, 3 - h),
-    ...plyZ(3.5, -6 + h, 3 - h, [-4.4, -3.2]),
-    ...plyZ(6.8, -6 + h, -1.5),
+    // East building: x 5..13, z -8..3. Three rooms.
+    ...plyX(3, 5 - h, 13 + h, [8.4, 9.6]),
+    ...plyX(-8, 5 - h, 13 + h),
+    ...plyZ(13, -8 + h, 3 - h),
+    ...plyZ(5, -8 + h, 3 - h, [-5.6, -4.4]),
+    ...plyZ(9, -8 + h, -2.5),
+    ...plyX(-1, 10.5, 13 - h),
 
-    crate(0, -2),
-    crate(-1.6, 5),
-    crate(-1.6, 5, 1),
-    crate(3.2, 4.6),
-    crate(8.6, 0.2),
+    // Barricades in the lane. They hide the far target from the spawn.
+    ...plyX(-3.5, -2.2, 0.2),
+    ...plyX(-7.5, -0.2, 2.4),
+
+    crate(-1.6, 6.5),
+    crate(-1.6, 6.5, 1),
+    crate(3.2, 5.4),
+    crate(1.4, -5.2),
+    crate(-3.6, -10),
+    crate(-7, 0.6),
+    crate(11.4, -0.2),
+    crate(14.6, 4),
+    crate(14.6, 4, 1),
   ],
   // Each target has at least 1.9 m of clear floor behind it to fall onto.
   targets: [
-    { position: { x: 0, y: 0, z: -7 }, facing: { x: 0, z: 1 } },
-    { position: { x: -8, y: 0, z: 1 }, facing: { x: 1, z: 0 } },
-    { position: { x: -8.5, y: 0, z: -4 }, facing: { x: 0, z: 1 } },
-    { position: { x: -4.6, y: 0, z: -4 }, facing: { x: 0, z: 1 } },
-    { position: { x: 8, y: 0, z: 1.6 }, facing: { x: -1, z: 0 } },
-    { position: { x: 8.6, y: 0, z: -4 }, facing: { x: 0, z: 1 } },
-    { position: { x: 5, y: 0, z: -4 }, facing: { x: 0, z: 1 } },
-    { position: { x: -11, y: 0, z: -7 }, facing: { x: 0, z: 1 } },
+    { position: { x: 0, y: 0, z: -9.8 }, facing: { x: 0, z: 1 } },
+    { position: { x: -10.8, y: 0, z: 1 }, facing: { x: 1, z: 0 } },
+    { position: { x: -11, y: 0, z: -5.5 }, facing: { x: 0, z: 1 } },
+    { position: { x: -7, y: 0, z: -5.5 }, facing: { x: 0, z: 1 } },
+    { position: { x: 10.8, y: 0, z: 1.4 }, facing: { x: -1, z: 0 } },
+    { position: { x: 11, y: 0, z: -5.5 }, facing: { x: 0, z: 1 } },
+    { position: { x: 7, y: 0, z: -5.5 }, facing: { x: 0, z: 1 } },
+    { position: { x: -14.5, y: 0, z: -9.5 }, facing: { x: 0, z: 1 } },
+    { position: { x: 10, y: 0, z: -10 }, facing: { x: -1, z: 0 } },
+    { position: { x: 14.5, y: 0, z: -3 }, facing: { x: 0, z: 1 } },
   ],
 };

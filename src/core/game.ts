@@ -5,10 +5,13 @@ import type { PlayerInput, PlayerState } from './player';
 import { createPlayer, eyePosition, stepPlayer } from './player';
 import type { Vec3 } from './vec';
 import { add, scale } from './vec';
-import type { WeaponInput, WeaponState } from './weapon';
+import type { WeaponInput, WeaponSpec, WeaponState } from './weapon';
 import { createWeapon, M1911, stepWeapon } from './weapon';
 
 export type GameInput = PlayerInput & WeaponInput;
+
+/** The weapon the player carries. There is only one so far. */
+export const WEAPON: WeaponSpec = M1911;
 
 export interface GameState {
   readonly player: PlayerState;
@@ -85,7 +88,7 @@ export function aimDirection(yaw: number, pitch: number): Vec3 {
 export function createGame(map: GameMap): GameState {
   return {
     player: createPlayer(map.spawn.position, map.spawn.yaw),
-    weapon: createWeapon(),
+    weapon: createWeapon(WEAPON),
     targetsDown: map.targets.map(() => false),
     resetIn: 0,
   };
@@ -116,14 +119,15 @@ export function stepGame(
   if (playerStep.jumped) events.push({ type: 'jump' });
   if (playerStep.landedSpeed !== null) events.push({ type: 'land', speed: playerStep.landedSpeed });
 
-  const weaponStep = stepWeapon(state.weapon, input, dt);
+  const weaponStep = stepWeapon(state.weapon, input, dt, WEAPON);
   for (const event of weaponStep.events) {
     if (event !== 'shot') {
       events.push({ type: event });
       continue;
     }
 
-    // Fire along the aim as it was before this shot's own kick.
+    // Fire from the eye, wherever leaning has put it, along the aim as it was before
+    // this shot's own kick.
     const origin = eyePosition(player);
     const direction = aimDirection(player.yaw, player.pitch + state.weapon.recoil);
 
@@ -134,7 +138,7 @@ export function stepGame(
     const targetBoxes = map.targets.flatMap((spawn, index) =>
       targetsDown[index] ? [] : targetHitBoxes(spawn),
     );
-    const hit = raycast(origin, direction, M1911.range, [...map.solids, ...targetBoxes]);
+    const hit = raycast(origin, direction, WEAPON.range, [...map.solids, ...targetBoxes]);
 
     if (!hit) {
       events.push({ type: 'shot', origin, direction, hit: null });

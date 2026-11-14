@@ -6,7 +6,7 @@
  */
 
 import type { Box } from './collision';
-import { moveBody } from './collision';
+import { moveBody, overlaps } from './collision';
 import type { Vec3 } from './vec';
 import { clamp } from './vec';
 
@@ -22,6 +22,8 @@ export interface PlayerState {
   /** Seconds left in which an early jump press will still fire on landing. */
   readonly jumpBuffer: number;
   readonly jumpHeld: boolean;
+  /** Metres the head is currently leaned to the side. Negative is left. */
+  readonly lean: number;
 }
 
 export interface PlayerInput {
@@ -34,6 +36,10 @@ export interface PlayerInput {
   /** Look deltas in radians accumulated since the last step. */
   readonly yawDelta: number;
   readonly pitchDelta: number;
+  /** -1 leans left, 1 leans right, 0 stands straight. */
+  readonly lean: number;
+  /** Aiming down the sights. Slows movement and rules out sprinting. */
+  readonly aim: boolean;
 }
 
 export const PLAYER_TUNING = {
@@ -51,6 +57,15 @@ export const PLAYER_TUNING = {
   coyoteTime: 0.1,
   jumpBufferTime: 0.12,
   maxPitch: Math.PI / 2 - 0.01,
+  /** How far the head moves sideways at full lean. */
+  leanDistance: 0.42,
+  /** Metres per second the head moves while leaning in or out. */
+  leanSpeed: 3,
+  /** The head drops slightly at full lean, as the body tilts. */
+  leanDrop: 0.05,
+  /** Half-width of the space the head needs, so a lean never puts the eye in a wall. */
+  headRadius: 0.14,
+  aimSpeedFactor: 0.55,
 } as const;
 
 export const NO_INPUT: PlayerInput = {
@@ -60,6 +75,8 @@ export const NO_INPUT: PlayerInput = {
   sprint: false,
   yawDelta: 0,
   pitchDelta: 0,
+  lean: 0,
+  aim: false,
 };
 
 export function createPlayer(position: Vec3 = { x: 0, y: 0, z: 0 }, yaw = 0): PlayerState {
@@ -72,12 +89,45 @@ export function createPlayer(position: Vec3 = { x: 0, y: 0, z: 0 }, yaw = 0): Pl
     coyote: PLAYER_TUNING.coyoteTime,
     jumpBuffer: 0,
     jumpHeld: false,
+    lean: 0,
+  };
+}
+
+/** Where the eye is for a body at `feet` facing `yaw`, leaned `lean` metres sideways. */
+export function eyeAt(feet: Vec3, yaw: number, lean: number): Vec3 {
+  const t = PLAYER_TUNING;
+  const drop = (Math.abs(lean) / t.leanDistance) * t.leanDrop;
+  return {
+    x: feet.x + Math.cos(yaw) * lean,
+    y: feet.y + t.eyeHeight - drop,
+    z: feet.z - Math.sin(yaw) * lean,
   };
 }
 
 export function eyePosition(player: PlayerState): Vec3 {
-  const { x, y, z } = player.position;
-  return { x, y: y + PLAYER_TUNING.eyeHeight, z };
+  return eyeAt(player.position, player.yaw, player.lean);
+}
+
+const LEAN_PROBE_STEP = 0.03;
+
+/**
+ * How far the head can lean to one side (-1 left, 1 right) before it would enter a
+ * solid. The head is moved out in small steps and stops at the last clear one, so
+ * the camera can never end up inside or looking through a wall.
+ */
+export function leanRoom(feet: Vec3, yaw: number, side: -1 | 1, solids: readonly Box[]): number {
+  const t = PLAYER_TUNING;
+  let room = 0;
+  for (let d = LEAN_PROBE_STEP; d <= t.leanDistance + 1e-9; d += LEAN_PROBE_STEP) {
+    const eye = eyeAt(feet, yaw, side * d);
+    const head: Box = {
+      min: { x: eye.x - t.headRadius, y: eye.y - 0.2, z: eye.z - t.headRadius },
+      max: { x: eye.x + t.headRadius, y: eye.y + t.headRadius, z: eye.z + t.headRadius },
+    };
+    if (solids.some((solid) => overlaps(head, solid))) break;
+    room = d;
+  }
+  return room;
 }
 
 export interface PlayerStep {
@@ -107,7 +157,9 @@ export function stepPlayer(
   }
   const moving = inputLength > 0;
 
-  const speed = input.sprint && moveForward > 0 ? t.sprintSpeed : t.walkSpeed;
+  let speed: number = t.walkSpeed;
+  if (input.aim) speed *= t.aimSpeedFactor;
+  else if (input.sprint && moveForward > 0) speed = t.sprintSpeed;
   const sin = Math.sin(yaw);
   const cos = Math.cos(yaw);
   const wishX = (-sin * moveForward + cos * moveRight) * speed;
@@ -166,6 +218,15 @@ export function stepPlayer(
   if (move.hitX) vx = 0;
   if (move.hitZ) vz = 0;
 
+  // Lean toward the side being held, then pull back in if a wall is in the way. The
+  // limit is checked every step, so walking toward a wall while leaned pushes the
+  // head back rather than letting it pass through.
+  const wanted = Math.sign(input.lean) * t.leanDistance;
+  const change = t.leanSpeed * dt;
+  let lean = state.lean + clamp(wanted - state.lean, -change, change);
+  if (lean > 0) lean = Math.min(lean, leanRoom(move.position, yaw, 1, solids));
+  else if (lean < 0) lean = Math.max(lean, -leanRoom(move.position, yaw, -1, solids));
+
   return {
     state: {
       position: move.position,
@@ -176,6 +237,7 @@ export function stepPlayer(
       coyote,
       jumpBuffer,
       jumpHeld: input.jump,
+      lean,
     },
     jumped,
     landedSpeed,

@@ -55,7 +55,9 @@ The checks prove the simulation is correct and the project builds. They do not p
 the game looks right. For that, play it:
 
 ```
-npm run playtest            # walk, shoot, reload, then the bot clears the map
+npm run playtest            # every feature (reload, aim, lean, loudness), then the bot clears the map
+npm run playtest -- --materials    # every texture side by side
+npm run playtest -- --keep before  # also copy the screenshots to playtest/before/ to compare later
 npm run playtest -- --quick # one screenshot of the spawn
 ```
 

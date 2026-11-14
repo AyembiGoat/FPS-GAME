@@ -1,4 +1,4 @@
-import { M1911 } from '../core/weapon';
+import { WEAPON } from '../core/game';
 
 function element(id: string): HTMLElement {
   const found = document.getElementById(id);
@@ -12,7 +12,8 @@ export function createHud() {
   const rounds = element('rounds');
   const targets = element('targets');
   const hitMarker = element('hit-marker');
-  element('weapon-name').textContent = M1911.name;
+  const crosshair = element('crosshair');
+  element('weapon-name').textContent = WEAPON.name;
 
   let hitTime = 0;
   // Only touch the page when a value changes; this runs every frame.
@@ -25,8 +26,14 @@ export function createHud() {
       hitMarker.hidden = false;
     },
 
-    update(dt: number, state: { rounds: number; reloading: boolean; down: number; total: number }) {
-      const roundsText = state.reloading ? 'Reloading' : `${state.rounds} / ${M1911.magazineSize}`;
+    update(
+      dt: number,
+      state: { rounds: number; reloading: boolean; aiming: boolean; down: number; total: number },
+    ) {
+      // With the sights up, the sights are the crosshair.
+      if (crosshair.hidden !== state.aiming) crosshair.hidden = state.aiming;
+
+      const roundsText = state.reloading ? 'Reloading' : `${state.rounds} / ${WEAPON.magazineSize}`;
       if (roundsText !== shownRounds) {
         shownRounds = roundsText;
         rounds.textContent = roundsText;

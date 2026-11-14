@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Box } from './collision';
 import { SIM_STEP_SECONDS } from './fixedLoop';
 import type { PlayerInput, PlayerState } from './player';
-import { createPlayer, NO_INPUT, PLAYER_TUNING, stepPlayer } from './player';
+import { createPlayer, eyePosition, NO_INPUT, PLAYER_TUNING, stepPlayer } from './player';
 
 const dt = SIM_STEP_SECONDS;
 const T = PLAYER_TUNING;
@@ -63,6 +63,12 @@ describe('stepPlayer movement', () => {
   it('does not move faster diagonally', () => {
     const end = simulate(createPlayer(), { ...NO_INPUT, forward: 1, right: 1 }, 30);
     expect(horizontalSpeed(end)).toBeCloseTo(T.walkSpeed, 5);
+  });
+
+  it('walks slower and cannot sprint while aiming', () => {
+    const input = { ...NO_INPUT, forward: 1, sprint: true, aim: true };
+    const end = simulate(createPlayer(), input, 30);
+    expect(horizontalSpeed(end)).toBeCloseTo(T.walkSpeed * T.aimSpeedFactor, 5);
   });
 
   it('sprints forward but not backward', () => {
@@ -182,5 +188,59 @@ describe('stepPlayer jumping', () => {
       jumped ||= step.jumped;
     }
     expect(jumped).toBe(true);
+  });
+});
+
+describe('stepPlayer leaning', () => {
+  const leanRight = { ...NO_INPUT, lean: 1 };
+  const eyeHeight = T.eyeHeight - T.leanDrop;
+  /** A wall to the player's right, its face `gap` metres from the player's centre. */
+  const sideWall = (gap: number): Box => ({
+    min: { x: gap, y: 0, z: -100 },
+    max: { x: gap + 1, y: 3, z: 100 },
+  });
+
+  it('moves the eye sideways without moving the feet, and comes back', () => {
+    const leaned = simulate(createPlayer(), leanRight, 30);
+    expect(leaned.position).toEqual({ x: 0, y: 0, z: 0 });
+    expect(eyePosition(leaned)).toEqual({ x: T.leanDistance, y: eyeHeight, z: 0 });
+
+    const left = simulate(createPlayer(), { ...NO_INPUT, lean: -1 }, 30);
+    expect(eyePosition(left).x).toBeCloseTo(-T.leanDistance, 5);
+
+    expect(simulate(leaned, NO_INPUT, 30).lean).toBe(0);
+  });
+
+  it('leans along the direction the player faces', () => {
+    const turned = simulate(createPlayer(), { ...NO_INPUT, yawDelta: Math.PI / 2 }, 1);
+    const eye = eyePosition(simulate(turned, leanRight, 30));
+    // Facing -X, so right is -Z.
+    expect(eye.x).toBeCloseTo(0, 5);
+    expect(eye.z).toBeCloseTo(-T.leanDistance, 5);
+  });
+
+  it('stops the head short of a wall instead of putting the eye inside it', () => {
+    const wall = sideWall(0.4);
+    const leaned = simulate(createPlayer(), leanRight, 30, [floor, wall]);
+    const eye = eyePosition(leaned);
+    expect(eye.x).toBeGreaterThan(0.2);
+    expect(eye.x + T.headRadius).toBeLessThanOrEqual(0.4);
+  });
+
+  it('leans only as far as the head has room when pressed against a wall', () => {
+    const leaned = simulate(createPlayer(), leanRight, 30, [floor, sideWall(T.radius)]);
+    // The head is narrower than the body, so a little room remains.
+    expect(leaned.lean).toBeLessThanOrEqual(T.radius - T.headRadius + 1e-6);
+  });
+
+  it('pulls the head back in when the player walks into a wall while leaned', () => {
+    const wall = sideWall(3);
+    let state = simulate(createPlayer(), leanRight, 30, [floor, wall]);
+    expect(state.lean).toBeCloseTo(T.leanDistance, 5);
+    for (let i = 0; i < 120; i++) {
+      state = stepPlayer(state, { ...leanRight, right: 1 }, dt, [floor, wall]).state;
+      expect(eyePosition(state).x + T.headRadius).toBeLessThanOrEqual(3 + 1e-6);
+    }
+    expect(state.position.x).toBeCloseTo(3 - T.radius, 5);
   });
 });

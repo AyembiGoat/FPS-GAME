@@ -147,6 +147,14 @@ src/
 - **Units:** metres, seconds, radians. Right-handed, Y up. Yaw 0 looks down -Z.
 - **Randomness** in core comes from a seeded RNG passed in as an argument.
 - **Tuning values** live in exported constant objects such as `PLAYER_TUNING`.
+- **One texture library.** Every surface gets its material from `src/game/materials`.
+  See [`textures`](.agents/skills/textures/SKILL.md).
+- **A gun is data plus anchors.** Its rules are a `WeaponSpec` in core; its model says
+  where the hands, sight, muzzle and magazine are, and the shared arms and animations
+  use those. See [`weapons`](.agents/skills/weapons/SKILL.md).
+- **The bot can do everything the player can.** When you add a player ability, teach
+  `src/core/bot.ts` to use it and add a check to `scripts/playtest.mjs`. An ability the
+  bot never uses is an ability no agent can test.
 
 ## Taste
 
@@ -177,9 +185,12 @@ src/
 - The checks cannot see the screen. For anything the player sees, run
   `npm run playtest`. It plays the game in a real browser, with a bot that uses the
   same controls as a person, and saves screenshots to `playtest/`. Open the
-  screenshots and look at them. See [`verify-work`](.agents/skills/verify-work/SKILL.md)
+  screenshots and look at them. To compare before and after, run
+  `npm run playtest -- --keep before` first, make the change, run it again and open
+  both sets. See [`verify-work`](.agents/skills/verify-work/SKILL.md)
   for writing your own scenario.
-- Neither tool can judge sound or how the controls feel in the hand. Tell the owner
+- The playtest measures how loud each sound is, but neither tool can judge whether a
+  sound is pleasant or how the controls feel in the hand. Tell the owner
   that those need a person.
 - When a feature is finished, start the dev server (`npm run dev`) so the owner can
   play it, and tell them it is ready.

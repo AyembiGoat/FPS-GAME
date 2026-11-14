@@ -49,6 +49,8 @@ async function findBrowser() {
  *   step(input, steps)  hold an input for a number of 60 Hz steps
  *   bot(steps)          let the bot play
  *   state()             the current game state
+ *   zoom()              how far the view is zoomed in (1 is not zoomed)
+ *   loudness()          peak level of each sound, as a fraction of the gunshot
  *   screenshot(file)    save what is on screen
  * `errors` collects anything the page logged as an error.
  */
@@ -85,6 +87,8 @@ export async function launchGame({ width = 1280, height = 720, mode = 'auto' } =
   await page.goto(`http://127.0.0.1:${address.port}/?${mode}`, { waitUntil: 'load' });
   if (mode === 'auto')
     await page.waitForFunction(() => window.__fps !== undefined, { timeout: 60000 });
+  if (mode === 'materials')
+    await page.waitForFunction(() => document.body.dataset.ready === 'true', { timeout: 60000 });
 
   return {
     page,
@@ -92,6 +96,8 @@ export async function launchGame({ width = 1280, height = 720, mode = 'auto' } =
     step: (input = {}, steps = 1) => page.evaluate((i, n) => window.__fps.step(i, n), input, steps),
     bot: (steps = 1) => page.evaluate((n) => window.__fps.bot(n), steps),
     state: () => page.evaluate(() => window.__fps.state()),
+    zoom: () => page.evaluate(() => window.__fps.zoom()),
+    loudness: () => page.evaluate(() => window.__fps.loudness()),
     async screenshot(file) {
       mkdirSync(path.dirname(file), { recursive: true });
       await page.screenshot({ path: file });

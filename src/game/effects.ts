@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { SurfaceMaterial } from '../core/map';
 import type { Vec3 } from '../core/vec';
-import { softDot } from './textures';
+import { softDot } from './materials';
 
 const HOLES = 48;
 const PUFFS = 8;

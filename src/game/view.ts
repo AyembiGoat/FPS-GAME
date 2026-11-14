@@ -1,18 +1,27 @@
 import * as THREE from 'three';
 import type { GameEvent, GameState } from '../core/game';
+import { WEAPON } from '../core/game';
 import type { GameMap } from '../core/map';
-import { PLAYER_TUNING } from '../core/player';
-import { M1911 } from '../core/weapon';
+import { eyeAt, PLAYER_TUNING } from '../core/player';
 import type { GameAudio } from './audio';
 import { createEffects } from './effects';
 import { createHud } from './hud';
-import { createViewmodel } from './viewmodel';
+import { buildWeaponModel } from './weapons';
+import { createViewmodel } from './weapons/viewmodel';
 import { buildWorld } from './world';
 
 const FIELD_OF_VIEW = 78;
 /** Metres between footsteps. */
 const STRIDE = 1.9;
 const MUZZLE_LIGHT_SECONDS = 0.05;
+/** Radians the view rolls at full lean. */
+const LEAN_ROLL = 0.15;
+
+/** The lens angle that magnifies the centre of the view `zoom` times. */
+function zoomedFieldOfView(zoom: number): number {
+  const half = THREE.MathUtils.degToRad(FIELD_OF_VIEW / 2);
+  return THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(half) / zoom));
+}
 
 /** Everything the player sees and hears. Reads simulation state; never changes it. */
 export function createView(map: GameMap, audio: GameAudio) {
@@ -28,7 +37,8 @@ export function createView(map: GameMap, audio: GameAudio) {
   const world = buildWorld(map, renderer);
   const camera = new THREE.PerspectiveCamera(FIELD_OF_VIEW, 1, 0.05, 3000);
   camera.rotation.order = 'YXZ';
-  const viewmodel = createViewmodel(world.scene.environment);
+  const weaponModel = buildWeaponModel(WEAPON);
+  const viewmodel = createViewmodel(weaponModel, world.scene.environment);
   const effects = createEffects(world.scene);
   const hud = createHud();
 
@@ -45,6 +55,17 @@ export function createView(map: GameMap, audio: GameAudio) {
   let lastPitch = 0;
   const lastPosition = new THREE.Vector3(map.spawn.position.x, 0, map.spawn.position.z);
   const sunInView = new THREE.Vector3();
+  const toSound = new THREE.Vector3();
+  const rightward = new THREE.Vector3();
+  let zoom = 1;
+  let aimDirection = -1;
+
+  /** Where a point in the world sits between the ears: -1 left, 1 right. */
+  function panOf(point: { x: number; y: number; z: number }): number {
+    toSound.set(point.x, point.y, point.z).sub(camera.position).normalize();
+    rightward.setFromMatrixColumn(camera.matrixWorld, 0);
+    return toSound.dot(rightward) * 0.8;
+  }
 
   function resize() {
     const width = window.innerWidth;
@@ -61,8 +82,11 @@ export function createView(map: GameMap, audio: GameAudio) {
   return {
     canvas: renderer.domElement,
 
+    /** Current magnification, so mouse speed can be scaled to match. */
+    zoom: () => zoom,
+
     /** React to what happened in one simulation step. */
-    handle(events: readonly GameEvent[]) {
+    handle(events: readonly GameEvent[], state: GameState) {
       for (const event of events) {
         switch (event.type) {
           case 'shot':
@@ -71,8 +95,9 @@ export function createView(map: GameMap, audio: GameAudio) {
             muzzleLightTime = MUZZLE_LIGHT_SECONDS;
             if (event.hit) {
               effects.impact(event.hit.point, event.hit.normal, event.hit.surface);
-              if (event.hit.surface === 'target') audio.steel(event.hit.distance);
-              else audio.impact(event.hit.distance, event.hit.surface);
+              const pan = panOf(event.hit.point);
+              if (event.hit.surface === 'target') audio.steel(event.hit.distance, pan);
+              else audio.impact(event.hit.distance, event.hit.surface, pan);
             }
             break;
           case 'target-down':
@@ -86,7 +111,7 @@ export function createView(map: GameMap, audio: GameAudio) {
             audio.dryFire();
             break;
           case 'reload-start':
-            audio.reload(M1911.reloadTime);
+            audio.reload(WEAPON.reloadTime, weaponModel.reload, state.weapon.rounds === 0);
             break;
           case 'jump':
             audio.footstep(0.8);
@@ -146,20 +171,41 @@ export function createView(map: GameMap, audio: GameAudio) {
         -PLAYER_TUNING.maxPitch,
         PLAYER_TUNING.maxPitch,
       );
-      camera.position.set(x, y + PLAYER_TUNING.eyeHeight + bob + landOffset, z);
-      camera.rotation.set(pitch + state.weapon.recoil, yaw, 0);
+      // The eye moves sideways with the lean, exactly as the simulation fires from it.
+      const lean = THREE.MathUtils.lerp(previous.player.lean, state.player.lean, alpha);
+      const leanAmount = lean / PLAYER_TUNING.leanDistance;
+      const eye = eyeAt({ x, y, z }, yaw, lean);
+      camera.position.set(eye.x, eye.y + bob + landOffset, eye.z);
+      camera.rotation.set(pitch + state.weapon.recoil, yaw, -leanAmount * LEAN_ROLL);
+
+      // Aiming narrows the lens by the gun's magnification.
+      const aim = THREE.MathUtils.lerp(previous.weapon.aim, state.weapon.aim, alpha);
+      const wantedZoom = 1 + (WEAPON.aimZoom - 1) * THREE.MathUtils.smoothstep(aim, 0, 1);
+      if (wantedZoom !== zoom) {
+        zoom = wantedZoom;
+        camera.fov = zoomedFieldOfView(zoom);
+        camera.updateProjectionMatrix();
+      }
       camera.updateMatrixWorld();
+
+      const direction = Math.sign(state.weapon.aim - previous.weapon.aim);
+      if (direction !== 0 && direction !== aimDirection) {
+        aimDirection = direction;
+        audio.aim(direction > 0);
+      }
 
       const reloading = state.weapon.reloadRemaining > 0;
       viewmodel.update(dt, {
         rounds: state.weapon.rounds,
-        reloadProgress: reloading ? 1 - state.weapon.reloadRemaining / M1911.reloadTime : null,
+        reloadProgress: reloading ? 1 - state.weapon.reloadRemaining / WEAPON.reloadTime : null,
+        aim,
         moveAmount,
         sprinting: speed > PLAYER_TUNING.walkSpeed * 1.1 && state.player.grounded,
         walked,
         yawRate: dt > 0 ? (yaw - lastYaw) / dt : 0,
         pitchRate: dt > 0 ? (pitch - lastPitch) / dt : 0,
         landOffset,
+        lean: leanAmount,
       });
       lastYaw = yaw;
       lastPitch = pitch;
@@ -177,6 +223,7 @@ export function createView(map: GameMap, audio: GameAudio) {
       hud.update(dt, {
         rounds: state.weapon.rounds,
         reloading,
+        aiming: aim > 0.5,
         down: state.targetsDown.filter(Boolean).length,
         total: state.targetsDown.length,
       });

@@ -13,6 +13,7 @@ export function createHumanInput(canvas: HTMLCanvasElement) {
   const pressed = new Set<string>();
   let yaw = 0;
   let pitch = 0;
+  let zoom = 1;
 
   const locked = () => document.pointerLockElement === canvas;
   const down = (code: string) => {
@@ -28,15 +29,24 @@ export function createHumanInput(canvas: HTMLCanvasElement) {
   });
   document.addEventListener('keyup', (event) => held.delete(event.code));
   document.addEventListener('mousedown', (event) => {
-    if (locked() && event.button === 0) down('Fire');
+    if (!locked()) return;
+    if (event.button === 0) down('Fire');
+    if (event.button === 2) down('Aim');
   });
   document.addEventListener('mouseup', (event) => {
     if (event.button === 0) held.delete('Fire');
+    if (event.button === 2) held.delete('Aim');
+  });
+  // Right mouse is aim, so it must not open the browser menu.
+  document.addEventListener('contextmenu', (event) => {
+    event.preventDefault();
   });
   document.addEventListener('mousemove', (event) => {
     if (!locked()) return;
-    yaw -= event.movementX * MOUSE_SENSITIVITY;
-    pitch -= event.movementY * MOUSE_SENSITIVITY;
+    // Zoomed in, the same hand movement turns the view less, so it covers the same
+    // distance on screen.
+    yaw -= (event.movementX * MOUSE_SENSITIVITY) / zoom;
+    pitch -= (event.movementY * MOUSE_SENSITIVITY) / zoom;
   });
   document.addEventListener('pointerlockchange', () => {
     if (!locked()) {
@@ -51,6 +61,11 @@ export function createHumanInput(canvas: HTMLCanvasElement) {
   return {
     locked,
 
+    /** Tell the mouse how far the view is zoomed in. */
+    setZoom(value: number) {
+      zoom = value;
+    },
+
     /** Look that has not been handed to the simulation yet. */
     pendingLook: () => ({ yaw, pitch }),
 
@@ -63,6 +78,9 @@ export function createHumanInput(canvas: HTMLCanvasElement) {
         sprint: active('ShiftLeft'),
         fire: active('Fire'),
         reload: active('KeyR'),
+        aim: active('Aim'),
+        // Holding both keys cancels out.
+        lean: axis('KeyE', 'KeyQ'),
         yawDelta: yaw,
         pitchDelta: pitch,
       };

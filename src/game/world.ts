@@ -3,37 +3,20 @@ import { Sky } from 'three/addons/objects/Sky.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { TARGET } from '../core/game';
 import type { GameMap, SurfaceMaterial } from '../core/map';
-import * as textures from './textures';
+import type { SurfaceName } from './materials';
+import { applySurface, surface } from './materials';
 
 /** Late afternoon: a low sun off to the left of the spawn, throwing long shadows across the lane. */
 const SUN_ELEVATION = THREE.MathUtils.degToRad(31);
 const SUN_AZIMUTH = THREE.MathUtils.degToRad(-58);
 
-const SURFACES: Record<
-  SurfaceMaterial,
-  { texture: () => THREE.Texture; tile: readonly [number, number] | null; roughness: number }
-> = {
-  floor: { texture: textures.concreteFloor, tile: [3, 3], roughness: 0.92 },
-  concrete: { texture: textures.concreteWall, tile: [2.4, 2.4], roughness: 0.9 },
-  plywood: { texture: textures.plywood, tile: [1.2, 2.4], roughness: 0.82 },
-  // Crates keep one texture per face so the frame lines up with the edges.
-  crate: { texture: textures.crate, tile: null, roughness: 0.8 },
+/** Which library surface each kind of map solid is made of. */
+const SURFACES: Record<SurfaceMaterial, SurfaceName> = {
+  floor: 'concrete-floor',
+  concrete: 'concrete-wall',
+  plywood: 'plywood',
+  crate: 'crate',
 };
-
-/** Map each face from its world position so textures run unbroken across boxes. */
-function applyWorldUvs(geometry: THREE.BufferGeometry, tileU: number, tileV: number) {
-  const position = geometry.getAttribute('position');
-  const normal = geometry.getAttribute('normal');
-  const uv = geometry.getAttribute('uv');
-  for (let i = 0; i < position.count; i++) {
-    const x = position.getX(i);
-    const y = position.getY(i);
-    const z = position.getZ(i);
-    if (Math.abs(normal.getX(i)) > 0.5) uv.setXY(i, z / tileU, y / tileV);
-    else if (Math.abs(normal.getY(i)) > 0.5) uv.setXY(i, x / tileU, z / tileU);
-    else uv.setXY(i, x / tileU, y / tileV);
-  }
-}
 
 function buildSolids(map: GameMap): THREE.Mesh[] {
   const byMaterial = new Map<SurfaceMaterial, THREE.BufferGeometry[]>();
@@ -48,8 +31,7 @@ function buildSolids(map: GameMap): THREE.Mesh[] {
       solid.min.y + size.y / 2,
       solid.min.z + size.z / 2,
     );
-    const tile = SURFACES[solid.material].tile;
-    if (tile) applyWorldUvs(geometry, tile[0], tile[1]);
+    applySurface(geometry, SURFACES[solid.material]);
     const list = byMaterial.get(solid.material) ?? [];
     list.push(geometry);
     byMaterial.set(solid.material, list);
@@ -57,11 +39,7 @@ function buildSolids(map: GameMap): THREE.Mesh[] {
 
   // One mesh per material keeps the whole level to a handful of draw calls.
   return [...byMaterial].map(([material, geometries]) => {
-    const surface = SURFACES[material];
-    const mesh = new THREE.Mesh(
-      mergeGeometries(geometries),
-      new THREE.MeshStandardMaterial({ map: surface.texture(), roughness: surface.roughness }),
-    );
+    const mesh = new THREE.Mesh(mergeGeometries(geometries), surface(SURFACES[material]));
     mesh.castShadow = material !== 'floor';
     mesh.receiveShadow = true;
     return mesh;
@@ -103,16 +81,12 @@ function buildTargets(map: GameMap, scene: THREE.Scene): TargetView[] {
     bevelEnabled: false,
   });
   plateGeometry.translate(0, 0, -TARGET.thickness / 2);
+  applySurface(plateGeometry, 'target-steel');
   const postGeometry = new THREE.BoxGeometry(0.05, TARGET.bodyBottom + 0.3, 0.03);
   postGeometry.translate(0, (TARGET.bodyBottom + 0.3) / 2, -0.025);
   const footGeometry = new THREE.BoxGeometry(TARGET.bodyWidth + 0.1, 0.03, TARGET.standDepth);
   footGeometry.translate(0, 0.015, 0);
 
-  const plateMaterial = new THREE.MeshStandardMaterial({
-    color: 0xc4c2ba,
-    roughness: 0.55,
-    metalness: 0.35,
-  });
   const standMaterial = new THREE.MeshStandardMaterial({
     color: 0x2b2c2d,
     roughness: 0.6,
@@ -129,7 +103,7 @@ function buildTargets(map: GameMap, scene: THREE.Scene): TargetView[] {
     foot.receiveShadow = true;
     // The plate and its post hinge at the floor and fall away from the shooter.
     const hinge = new THREE.Group();
-    const plate = new THREE.Mesh(plateGeometry, plateMaterial);
+    const plate = new THREE.Mesh(plateGeometry, surface('target-steel'));
     const post = new THREE.Mesh(postGeometry, standMaterial);
     for (const mesh of [plate, post]) {
       mesh.castShadow = true;
@@ -172,7 +146,8 @@ export interface World {
   readonly sunDirection: THREE.Vector3;
 }
 
-export function buildWorld(map: GameMap, renderer: THREE.WebGLRenderer): World {
+/** A scene with the sky, sun and ground, and nothing else in it. */
+export function buildSky(renderer: THREE.WebGLRenderer) {
   const scene = new THREE.Scene();
   const sunDirection = new THREE.Vector3().setFromSphericalCoords(
     1,
@@ -212,10 +187,10 @@ export function buildWorld(map: GameMap, renderer: THREE.WebGLRenderer): World {
   sun.castShadow = true;
   sun.shadow.mapSize.set(4096, 4096);
   const shadowCamera = sun.shadow.camera;
-  shadowCamera.left = -19;
-  shadowCamera.right = 19;
-  shadowCamera.top = 19;
-  shadowCamera.bottom = -19;
+  shadowCamera.left = -24;
+  shadowCamera.right = 24;
+  shadowCamera.top = 24;
+  shadowCamera.bottom = -24;
   shadowCamera.near = 20;
   shadowCamera.far = 100;
   sun.shadow.bias = -0.0004;
@@ -232,6 +207,11 @@ export function buildWorld(map: GameMap, renderer: THREE.WebGLRenderer): World {
   outside.position.y = -0.05;
   scene.add(outside);
 
+  return { scene, sunDirection };
+}
+
+export function buildWorld(map: GameMap, renderer: THREE.WebGLRenderer): World {
+  const { scene, sunDirection } = buildSky(renderer);
   scene.add(...buildSolids(map));
   return { scene, targets: buildTargets(map, scene), sunDirection };
 }

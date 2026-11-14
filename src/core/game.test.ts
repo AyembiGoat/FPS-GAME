@@ -3,11 +3,10 @@ import { createBot } from './bot';
 import { bodyBox, overlaps } from './collision';
 import { SIM_STEP_SECONDS } from './fixedLoop';
 import type { GameEvent, GameInput, GameState } from './game';
-import { createGame, stepGame, TARGET, targetCentre } from './game';
+import { createGame, stepGame, TARGET, targetCentre, WEAPON } from './game';
 import type { GameMap } from './map';
 import { shootHouse } from './maps/shootHouse';
 import { eyePosition, NO_INPUT, PLAYER_TUNING } from './player';
-import { M1911 } from './weapon';
 
 const dt = SIM_STEP_SECONDS;
 const idle: GameInput = { ...NO_INPUT, fire: false, reload: false };
@@ -68,7 +67,7 @@ describe('stepGame shooting', () => {
 
   it('sends a second quick shot higher than the first', () => {
     const first = run(createGame(range), { ...idle, fire: true }, 1);
-    const wait = run(first.state, idle, Math.ceil(M1911.fireInterval / dt));
+    const wait = run(first.state, idle, Math.ceil(WEAPON.fireInterval / dt));
     const second = run(wait.state, { ...idle, fire: true }, 1);
     const height = (events: GameEvent[]) =>
       events.find((e) => e.type === 'shot')?.hit?.point.y ?? 0;
@@ -108,19 +107,71 @@ describe('Shoot House', () => {
   });
 
   it('can be cleared by the bot using only player inputs', () => {
-    const bot = createBot(shootHouse);
-    let state = createGame(shootHouse);
-    let shots = 0;
-    let cleared = false;
-    const limit = 120 / dt;
-    for (let i = 0; i < limit && !cleared; i++) {
-      const step = stepGame(state, bot(state), dt, shootHouse);
-      state = step.state;
-      shots += step.events.filter((event) => event.type === 'shot').length;
-      cleared = state.targetsDown.every(Boolean);
-    }
+    const { cleared, shots } = botRun(shootHouse, 180);
     expect(cleared).toBe(true);
     // The bot only fires when on target, so it should not need many spare rounds.
     expect(shots).toBeLessThanOrEqual(shootHouse.targets.length + 2);
+  });
+});
+
+function botRun(map: GameMap, seconds: number) {
+  const bot = createBot(map);
+  let state = createGame(map);
+  let shots = 0;
+  let leaned = false;
+  let cleared = false;
+  for (let i = 0; i < seconds / dt && !cleared; i++) {
+    const step = stepGame(state, bot(state), dt, map);
+    state = step.state;
+    for (const event of step.events) {
+      if (event.type !== 'shot') continue;
+      shots++;
+      leaned ||= Math.abs(state.player.lean) > 0.1;
+    }
+    cleared = state.targetsDown.every(Boolean);
+  }
+  return { state, cleared, shots, leaned };
+}
+
+describe('leaning and aiming in play', () => {
+  /** The range with a wall that hides the target unless the player leans right. */
+  const corner: GameMap = {
+    ...range,
+    solids: [
+      ...range.solids,
+      { min: { x: -5, y: 0, z: -3 }, max: { x: 0.15, y: 3, z: -2 }, material: 'plywood' },
+    ],
+    targets: [{ position: { x: 0.45, y: 0, z: -10 }, facing: { x: 0, z: 1 } }],
+  };
+  const aimAtTarget = { ...idle, pitchDelta: pitchToTarget() };
+
+  it('fires from the leaned eye, so a lean can reach what standing cannot', () => {
+    const fire = { ...idle, fire: true };
+    const aimed = run(createGame(corner), aimAtTarget, 1, corner).state;
+    const straight = run(aimed, fire, 1, corner);
+    expect(straight.events.find((e) => e.type === 'shot')?.hit?.surface).toBe('plywood');
+
+    const leaned = run(aimed, { ...idle, lean: 1 }, 30, corner).state;
+    expect(run(leaned, { ...fire, lean: 1 }, 1, corner).state.targetsDown).toEqual([true]);
+  });
+
+  it('lets the bot lean out and hit a target without stepping from cover', () => {
+    const result = botRun(corner, 10);
+    expect(result.cleared).toBe(true);
+    expect(result.leaned).toBe(true);
+    expect(Math.hypot(result.state.player.position.x, result.state.player.position.z)).toBeLessThan(
+      0.05,
+    );
+  });
+
+  it('has the bot aim down the sights before every shot', () => {
+    const bot = createBot(range);
+    let state = createGame(range);
+    for (let i = 0; i < 600 && !state.targetsDown[0]; i++) {
+      const input = bot(state);
+      if (input.fire) expect(state.weapon.aim).toBe(1);
+      state = stepGame(state, input, dt, range).state;
+    }
+    expect(state.targetsDown).toEqual([true]);
   });
 });

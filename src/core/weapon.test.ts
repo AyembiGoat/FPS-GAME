@@ -4,15 +4,16 @@ import type { WeaponEvent, WeaponInput, WeaponState } from './weapon';
 import { createWeapon, M1911, stepWeapon } from './weapon';
 
 const dt = SIM_STEP_SECONDS;
-const idle: WeaponInput = { fire: false, reload: false };
-const fire: WeaponInput = { fire: true, reload: false };
-const reload: WeaponInput = { fire: false, reload: true };
+const idle: WeaponInput = { fire: false, reload: false, aim: false };
+const fire: WeaponInput = { ...idle, fire: true };
+const reload: WeaponInput = { ...idle, reload: true };
+const aim: WeaponInput = { ...idle, aim: true };
 
 function run(state: WeaponState, input: WeaponInput, steps: number) {
   const events: WeaponEvent[] = [];
   let current = state;
   for (let i = 0; i < steps; i++) {
-    const step = stepWeapon(current, input, dt);
+    const step = stepWeapon(current, input, dt, M1911);
     current = step.state;
     events.push(...step.events);
   }
@@ -29,24 +30,24 @@ function pull(state: WeaponState) {
 }
 
 function emptyMagazine(): WeaponState {
-  let state = createWeapon();
+  let state = createWeapon(M1911);
   for (let i = 0; i < M1911.magazineSize; i++) state = pull(state).state;
   return state;
 }
 
 describe('stepWeapon', () => {
   it('fires one round per trigger pull, not while held', () => {
-    const held = run(createWeapon(), fire, 120);
+    const held = run(createWeapon(M1911), fire, 120);
     expect(held.events).toEqual(['shot']);
     expect(held.state.rounds).toBe(M1911.magazineSize - 1);
   });
 
   it('will not fire faster than the fire interval', () => {
-    let state = createWeapon();
+    let state = createWeapon(M1911);
     const events: WeaponEvent[] = [];
     // Alternate press and release every step, far faster than the gun cycles.
     for (let i = 0; i < 4; i++) {
-      const step = stepWeapon(state, i % 2 === 0 ? fire : idle, dt);
+      const step = stepWeapon(state, i % 2 === 0 ? fire : idle, dt, M1911);
       state = step.state;
       events.push(...step.events);
     }
@@ -56,7 +57,7 @@ describe('stepWeapon', () => {
   it('clicks and reloads when fired empty', () => {
     const empty = emptyMagazine();
     expect(empty.rounds).toBe(0);
-    const step = stepWeapon(empty, fire, dt);
+    const step = stepWeapon(empty, fire, dt, M1911);
     expect(step.events).toEqual(['dry-fire', 'reload-start']);
   });
 
@@ -65,7 +66,7 @@ describe('stepWeapon', () => {
     expect(started.events).toEqual(['reload-start']);
 
     const during = run(started.state, idle, 5);
-    expect(stepWeapon(during.state, fire, dt).events).toEqual([]);
+    expect(stepWeapon(during.state, fire, dt, M1911).events).toEqual([]);
 
     const done = run(started.state, idle, stepsFor(M1911.reloadTime));
     expect(done.events).toEqual(['reload-end']);
@@ -73,12 +74,35 @@ describe('stepWeapon', () => {
   });
 
   it('ignores reload with a full magazine', () => {
-    expect(run(createWeapon(), reload, 5).events).toEqual([]);
+    expect(run(createWeapon(M1911), reload, 5).events).toEqual([]);
   });
 
   it('kicks on each shot and settles back', () => {
-    const shot = stepWeapon(createWeapon(), fire, dt).state;
+    const shot = stepWeapon(createWeapon(M1911), fire, dt, M1911).state;
     expect(shot.recoil).toBeCloseTo(M1911.recoilKick, 5);
     expect(run(shot, idle, 120).state.recoil).toBeLessThan(M1911.recoilKick / 1000);
+  });
+
+  it('brings the sights up over the aim time and lowers them again', () => {
+    const half = run(createWeapon(M1911), aim, Math.round(M1911.aimTime / dt / 2));
+    expect(half.state.aim).toBeCloseTo(0.5, 1);
+    const up = run(createWeapon(M1911), aim, stepsFor(M1911.aimTime));
+    expect(up.state.aim).toBe(1);
+    expect(run(up.state, idle, stepsFor(M1911.aimTime)).state.aim).toBe(0);
+  });
+
+  it('kicks less when aimed', () => {
+    const aimed = run(createWeapon(M1911), aim, stepsFor(M1911.aimTime)).state;
+    const shot = stepWeapon(aimed, { ...aim, fire: true }, dt, M1911).state;
+    expect(shot.recoil).toBeCloseTo(M1911.recoilKick * M1911.aimRecoilFactor, 5);
+  });
+
+  it('lowers the sights to reload and raises them again if aim is still held', () => {
+    const aimed = run(createWeapon(M1911), aim, stepsFor(M1911.aimTime)).state;
+    const fired = run(run(aimed, { ...aim, fire: true }, 1).state, aim, 10).state;
+    const reloading = run(fired, { ...aim, reload: true }, stepsFor(M1911.aimTime));
+    expect(reloading.state.aim).toBe(0);
+    const after = run(reloading.state, aim, stepsFor(M1911.reloadTime));
+    expect(after.state.aim).toBe(1);
   });
 });

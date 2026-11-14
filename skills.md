@@ -14,6 +14,10 @@ that read `.agents/skills` load the same set. Read [`AGENTS.md`](AGENTS.md) firs
 | [level-design](.agents/skills/level-design/SKILL.md)                   | Building or changing maps, collision, spawns             |
 | [reference-images](.agents/skills/reference-images/SKILL.md)           | Before making anything the player will see               |
 | [models-and-assets](.agents/skills/models-and-assets/SKILL.md)         | Adding or changing 3D models, textures, animation, audio |
+| [textures](.agents/skills/textures/SKILL.md)                           | Giving anything a colour, material or texture            |
+| [weapons](.agents/skills/weapons/SKILL.md)                             | Adding a gun; attaching the arms; weapon animation       |
+| [aiming-and-scopes](.agents/skills/aiming-and-scopes/SKILL.md)         | Checking that aim and zoom work                          |
+| [sound](.agents/skills/sound/SKILL.md)                                 | Adding or changing any sound                             |
 | [rendering-performance](.agents/skills/rendering-performance/SKILL.md) | Lighting, materials, effects, frame rate, load time      |
 
 ## Vendored skills

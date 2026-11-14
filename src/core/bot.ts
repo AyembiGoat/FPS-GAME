@@ -1,21 +1,25 @@
 /**
  * A scripted player. It walks the map, finds standing targets and shoots them using
- * the same inputs a person has. It exists so that tests and agents can play the game:
- * if the bot can clear the map, movement, collision, the weapon and the level layout
- * all work together.
+ * the same inputs a person has, including leaning round cover and aiming down the
+ * sights. It exists so that tests and agents can play the game: if the bot can clear
+ * the map, movement, collision, the weapon and the level layout all work together.
+ *
+ * Whatever a player can do, the bot must be able to do. A new ability gets a new
+ * input in GameInput, and the bot is taught when to use it in the same change.
  */
 
 import type { Box } from './collision';
 import { bodyBox, overlaps, raycast } from './collision';
 import type { GameInput, GameState } from './game';
-import { targetCentre, targetHitBoxes } from './game';
+import { targetCentre, targetHitBoxes, WEAPON } from './game';
 import type { GameMap } from './map';
-import { eyePosition, NO_INPUT, PLAYER_TUNING } from './player';
+import { eyeAt, eyePosition, leanRoom, NO_INPUT, PLAYER_TUNING } from './player';
 import type { Vec3 } from './vec';
 import { angleDelta, clamp, length, sub } from './vec';
-import { M1911 } from './weapon';
 
 const CELL = 0.4;
+/** Leans shallower than this are not worth taking. */
+const MIN_USEFUL_LEAN = 0.15;
 /** Radians per step the bot may turn. Roughly a quick human flick. */
 const MAX_TURN = 0.12;
 const AIM_TOLERANCE = 0.004;
@@ -126,7 +130,7 @@ export function createBot(map: GameMap): Bot {
     if (!target) return false;
     const toTarget = sub(targetCentre(target), eye);
     const distance = length(toTarget);
-    if (distance > M1911.range) return false;
+    if (distance > WEAPON.range) return false;
     const direction = {
       x: toTarget.x / distance,
       y: toTarget.y / distance,
@@ -139,22 +143,48 @@ export function createBot(map: GameMap): Bot {
     return raycast(eye, direction, distance - 0.05, [...map.solids, ...others]) === null;
   }
 
+  /**
+   * Which way to lean to see a target from where the bot stands: 0 if it is visible
+   * standing straight, -1 or 1 if only a lean reveals it, null if it cannot be seen.
+   */
+  function leanToSee(state: GameState, index: number): -1 | 0 | 1 | null {
+    const target = map.targets[index];
+    if (!target) return null;
+    const feet = state.player.position;
+    // Judge the lean as it will be once the bot has turned to face the target.
+    const yaw = Math.atan2(feet.x - target.position.x, feet.z - target.position.z);
+    if (canSee(eyeAt(feet, yaw, 0), index, state)) return 0;
+    for (const side of [-1, 1] as const) {
+      const room = leanRoom(feet, yaw, side, map.solids);
+      if (room < MIN_USEFUL_LEAN) continue;
+      if (canSee(eyeAt(feet, yaw, side * room), index, state)) return side;
+    }
+    return null;
+  }
+
   return (state) => {
     const { player, weapon } = state;
-    const eye = eyePosition(player);
     const here = cellAt(map, grid, player.position.x, player.position.z);
 
     if (weapon.rounds === 0 && weapon.reloadRemaining === 0) {
       return { ...NO_INPUT, fire: false, reload: true };
     }
 
-    // Prefer a target already in view; otherwise head for the closest by walking distance.
-    let visible = -1;
+    // Prefer a target that can be engaged from here, standing or leaning. Otherwise
+    // head for the closest one by walking distance.
+    let engage = -1;
+    let lean: -1 | 0 | 1 = 0;
     let nearest = -1;
     let nearestDistance = Infinity;
     map.targets.forEach((_, index) => {
       if (state.targetsDown[index]) return;
-      if (visible < 0 && canSee(eye, index, state)) visible = index;
+      if (engage < 0) {
+        const side = leanToSee(state, index);
+        if (side !== null) {
+          engage = index;
+          lean = side;
+        }
+      }
       const d = fields[index]?.[here] ?? Infinity;
       if (d < nearestDistance) {
         nearestDistance = d;
@@ -162,26 +192,31 @@ export function createBot(map: GameMap): Bot {
       }
     });
 
-    const visibleTarget = map.targets[visible];
-    if (visibleTarget) {
-      const to = sub(targetCentre(visibleTarget), eye);
+    const engaged = map.targets[engage];
+    if (engaged) {
+      // Aim from where the eye really is right now, mid-lean included.
+      const eye = eyePosition(player);
+      const to = sub(targetCentre(engaged), eye);
       const wantedYaw = Math.atan2(-to.x, -to.z);
       const wantedPitch = Math.atan2(to.y, Math.hypot(to.x, to.z));
       const yawError = angleDelta(player.yaw, wantedYaw);
       // Recoil lifts the real aim, so correct against where the muzzle actually points.
       const pitchError = wantedPitch - (player.pitch + weapon.recoil);
       const onTarget = Math.abs(yawError) < AIM_TOLERANCE && Math.abs(pitchError) < AIM_TOLERANCE;
+      const ready = weapon.aim >= 1 && !weapon.triggerHeld && weapon.cooldown === 0;
       return {
         ...NO_INPUT,
         yawDelta: clamp(yawError, -MAX_TURN, MAX_TURN),
         pitchDelta: clamp(pitchError, -MAX_TURN, MAX_TURN),
-        fire: onTarget && !weapon.triggerHeld && weapon.cooldown === 0,
+        lean,
+        aim: true,
+        fire: onTarget && ready && canSee(eye, engage, state),
         reload: false,
       };
     }
 
     const field = fields[nearest];
-    if (!field) return { ...NO_INPUT, fire: false, reload: weapon.rounds < M1911.magazineSize };
+    if (!field) return { ...NO_INPUT, fire: false, reload: weapon.rounds < WEAPON.magazineSize };
 
     // Step to whichever neighbouring cell is closer to the goal.
     let next = here;
@@ -212,8 +247,9 @@ export function createBot(map: GameMap): Bot {
       yawDelta,
       pitchDelta: clamp(-player.pitch, -MAX_TURN, MAX_TURN),
       forward: facing ? 1 : 0,
+      // Top up between targets rather than running dry in front of the next one.
+      reload: weapon.rounds < WEAPON.magazineSize / 2,
       fire: false,
-      reload: false,
     };
   };
 }
