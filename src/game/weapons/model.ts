@@ -50,9 +50,11 @@ export interface WeaponModel {
   /** Metres the magazine travels before it is clear of the gun. */
   readonly magazineTravel: number;
 
-  /** The part that cycles back on each shot, or null if nothing does. */
+  /** The part that cycles back on each shot (slide, bolt carrier, pump forend, or bolt), or null. */
   readonly slide: THREE.Object3D | null;
   readonly slideTravel: number;
+  /** How `slide` cycles: standard slide/carrier, shotgun pump forend, or sniper bolt handle. */
+  readonly action?: 'slide' | 'pump' | 'bolt';
 
   /** Tip of the barrel; the muzzle flash appears here. */
   readonly muzzle: THREE.Object3D;
