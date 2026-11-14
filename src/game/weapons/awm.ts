@@ -1,11 +1,12 @@
 import * as THREE from 'three';
+import type { OpticId } from '../../core/weapon';
 import { surface } from '../materials';
 import type { WeaponModel } from './model';
 import {
   anchor,
   barrelCyl,
+  buildMountedOptic,
   buildPicatinnyRail,
-  buildSniperScope,
   fromSideProfile,
   partBox,
   underHandguardAnchor,
@@ -62,7 +63,7 @@ function chassisShape(): THREE.Shape {
 
 const GRIP_RAKE = -0.26;
 
-export function buildAWM(): WeaponModel {
+export function buildAWM(opticId: OpticId = 'sniper-scope'): WeaponModel {
   const root = new THREE.Group();
 
   // Monolithic Accuracy International NATO Olive Drab thumbhole chassis.
@@ -119,34 +120,38 @@ export function buildAWM(): WeaponModel {
   magazine.add(partBox('polymer-black', [0.031, 0.01, 0.092], [0, -0.094, 0]));
   root.add(magazine);
 
-  // Schmidt & Bender PM II 5-25×56 sniper riflescope mounted squarely over receiver.
-  const sightY = buildSniperScope(root, 0.052, -0.045);
+  // Mounted precision riflescope (PM II 6–10× default, LPVO 2–5×, or ACOG 3.5×).
+  const resolvedOptic = opticId === 'irons' ? 'sniper-scope' : opticId;
+  const mounted = buildMountedOptic(root, resolvedOptic, 0.052, -0.045);
 
   // Anchors.
   const gripAnchor = anchor(root, [0, -0.084, 0.086], [GRIP_RAKE, 0, 0]);
   const trigger = anchor(root, [0.014, -0.026, 0.012]);
   const supportAnchor = underHandguardAnchor(root, [0, -0.008, -0.235]);
+  const boltHand = anchor(slide, [0.044, 0.012, 0.098], [0.22, -0.35, -0.32]);
   const magazineHand = anchor(magazine, [0, -0.055, 0], [0.04, 0, 0]);
   const muzzle = anchor(root, [0, 0.028, -0.794]);
   const ejection = anchor(root, [0.024, 0.032, -0.01]);
-  // Sight sits at the rear ocular lens center along optical axis (`sightY`).
-  const sight = anchor(root, [0, sightY, 0.155]);
+  const sight = anchor(root, [0, mounted.sightY, mounted.sightZ]);
 
   return {
     root,
     grip: { anchor: gripAnchor, size: [0.034, 0.048], thumb: 'wrapped' },
     trigger,
     support: { anchor: supportAnchor, size: [0.046, 0.048], thumb: 'alongside' },
+    boltHand,
     magazineHand,
     magazine,
     magazineTravel: 0.12,
     slide,
     slideTravel: 0.076,
     action: 'bolt',
+    muzzleBrake: true,
+    recoilProfile: 'sniper',
     muzzle,
     ejection,
     sight,
-    aimDistance: 0.135,
+    aimDistance: mounted.aimDistance,
     hip: {
       position: new THREE.Vector3(0.17, -0.175, -0.29),
       rotation: new THREE.Euler(0.016, -0.042, -0.022),

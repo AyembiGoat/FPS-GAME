@@ -1,14 +1,16 @@
 import * as THREE from 'three';
+import type { OpticId } from '../../core/weapon';
 import { surface } from '../materials';
 import type { WeaponModel } from './model';
 import {
   anchor,
   barrelCyl,
   buildCurvedMagazine,
-  buildEotechHolo,
+  buildMountedOptic,
   buildPicatinnyRail,
   fromSideProfile,
   partBox,
+  sightDotMaterial,
   underHandguardAnchor,
   uprightCyl,
 } from './parts';
@@ -68,7 +70,7 @@ function pistolGripShape(): THREE.Shape {
 
 const GRIP_RAKE = -0.3;
 
-export function buildHK416(): WeaponModel {
+export function buildHK416(opticId: OpticId = 'holo'): WeaponModel {
   const root = new THREE.Group();
 
   // Lower receiver & ergonomic HK polymer pistol grip.
@@ -142,12 +144,36 @@ export function buildHK416(): WeaponModel {
   );
   root.add(partBox('glove', [0.038, 0.114, 0.014], [0, -0.032, 0.328], [0.06, 0, 0]));
 
-  // Low-profile folded flip-up front & rear backup iron sights (kept clear of optical window).
-  root.add(partBox('steel-dark', [0.021, 0.008, 0.032], [0, 0.049, -0.322]));
-  root.add(partBox('steel-dark', [0.022, 0.007, 0.026], [0, 0.049, 0.084]));
-
-  // EOTech EXPS3-0 Holographic Weapon Sight mounted squarely over the receiver.
-  const sightY = buildEotechHolo(root, 0.048, -0.01);
+  // Optic / flip-up iron sight setup.
+  let sightY = 0.068;
+  let sightZ = 0.084;
+  let aimDistance = 0.19;
+  if (opticId === 'irons') {
+    // Raised HK rotary diopter backup rear & winged hooded front post.
+    root.add(partBox('steel-dark', [0.022, 0.012, 0.026], [0, 0.054, 0.082]));
+    root.add(partBox('steel-dark', [0.005, 0.016, 0.012], [-0.007, 0.068, 0.082]));
+    root.add(partBox('steel-dark', [0.005, 0.016, 0.012], [0.007, 0.068, 0.082]));
+    root.add(partBox('steel-dark', [0.018, 0.003, 0.012], [0, 0.061, 0.082]));
+    // Front post tower + glowing green tritium tip.
+    root.add(partBox('steel-dark', [0.02, 0.012, 0.028], [0, 0.054, -0.322]));
+    root.add(partBox('steel-dark', [0.003, 0.018, 0.014], [-0.009, 0.068, -0.322]));
+    root.add(partBox('steel-dark', [0.003, 0.018, 0.014], [0.009, 0.068, -0.322]));
+    root.add(partBox('steel-dark', [0.0024, 0.012, 0.003], [0, 0.064, -0.322]));
+    const dot = new THREE.Mesh(
+      new THREE.BoxGeometry(0.0026, 0.0028, 0.0034),
+      sightDotMaterial(0x76ff94),
+    );
+    dot.position.set(0, 0.068, -0.322);
+    root.add(dot);
+  } else {
+    // Low-profile folded flip-up front & rear backup iron sights (clear of optical window).
+    root.add(partBox('steel-dark', [0.021, 0.008, 0.032], [0, 0.049, -0.322]));
+    root.add(partBox('steel-dark', [0.022, 0.007, 0.026], [0, 0.049, 0.084]));
+    const mounted = buildMountedOptic(root, opticId, 0.048, -0.01);
+    sightY = mounted.sightY;
+    sightZ = mounted.sightZ;
+    aimDistance = mounted.aimDistance;
+  }
 
   // Removable 30-round curved polymer PMAG.
   const magazine = new THREE.Group();
@@ -162,7 +188,7 @@ export function buildHK416(): WeaponModel {
   const magazineHand = anchor(magazine, [0, -0.1, -0.016], [0.08, 0, 0]);
   const muzzle = anchor(root, [0, 0.018, -0.514]);
   const ejection = anchor(root, [0.024, 0.024, -0.012]);
-  const sight = anchor(root, [0, sightY, 0.01]);
+  const sight = anchor(root, [0, sightY, sightZ]);
 
   return {
     root,
@@ -175,10 +201,11 @@ export function buildHK416(): WeaponModel {
     slide,
     slideTravel: 0.048,
     action: 'slide',
+    recoilProfile: 'carbine',
     muzzle,
     ejection,
     sight,
-    aimDistance: 0.215,
+    aimDistance,
     hip: {
       position: new THREE.Vector3(0.16, -0.162, -0.3),
       rotation: new THREE.Euler(0.018, -0.042, -0.024),

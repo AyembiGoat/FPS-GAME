@@ -1,9 +1,12 @@
 import * as THREE from 'three';
+import type { OpticId } from '../../core/weapon';
 import { surface } from '../materials';
 import type { WeaponModel } from './model';
 import {
   anchor,
   barrelCyl,
+  buildMountedOptic,
+  buildPicatinnyRail,
   fromSideProfile,
   partBox,
   sightDotMaterial,
@@ -36,7 +39,7 @@ function stockShape(): THREE.Shape {
   return s;
 }
 
-export function buildRemington870(): WeaponModel {
+export function buildRemington870(opticId: OpticId = 'irons'): WeaponModel {
   const root = new THREE.Group();
 
   // Solid milled steel receiver with rounded top crown (z: -0.095..0.10).
@@ -83,17 +86,28 @@ export function buildRemington870(): WeaponModel {
   root.add(slide);
 
   // Ghost-ring rear aperture sight + bright orange-tipped winged front sight (sightY = 0.056).
-  const sightY = 0.056;
-  root.add(partBox('steel-dark', [0.026, 0.008, 0.032], [0, 0.042, 0.052]));
-  const ghostRing = new THREE.Mesh(
-    new THREE.TorusGeometry(0.0082, 0.0022, 10, 20),
-    surface('steel-dark'),
-  );
-  ghostRing.position.set(0, sightY, 0.052);
-  root.add(ghostRing);
-  // Protective ears beside ghost ring.
-  root.add(partBox('steel-dark', [0.003, 0.018, 0.016], [-0.012, sightY - 0.002, 0.052]));
-  root.add(partBox('steel-dark', [0.003, 0.018, 0.016], [0.012, sightY - 0.002, 0.052]));
+  let sightY = 0.056;
+  let sightZ = 0.056;
+  let aimDistance = 0.17;
+  if (opticId === 'irons') {
+    root.add(partBox('steel-dark', [0.026, 0.008, 0.032], [0, 0.042, 0.052]));
+    const ghostRing = new THREE.Mesh(
+      new THREE.TorusGeometry(0.0082, 0.0022, 10, 20),
+      surface('steel-dark'),
+    );
+    ghostRing.position.set(0, sightY, 0.052);
+    root.add(ghostRing);
+    // Protective ears beside ghost ring.
+    root.add(partBox('steel-dark', [0.003, 0.018, 0.016], [-0.012, sightY - 0.002, 0.052]));
+    root.add(partBox('steel-dark', [0.003, 0.018, 0.016], [0.012, sightY - 0.002, 0.052]));
+  } else {
+    // Tactical receiver-top Picatinny optic rail + mounted reflex/holo optic.
+    buildPicatinnyRail(root, 0.042, -0.072, 0.072, 'steel-dark');
+    const mounted = buildMountedOptic(root, opticId, 0.048, -0.008);
+    sightY = mounted.sightY;
+    sightZ = mounted.sightZ;
+    aimDistance = mounted.aimDistance;
+  }
 
   // Front ramp base + glowing international orange bead aligned to sightY = 0.056.
   root.add(partBox('steel-dark', [0.016, 0.016, 0.034], [0, 0.04, -0.542]));
@@ -102,7 +116,7 @@ export function buildRemington870(): WeaponModel {
     new THREE.BoxGeometry(0.0042, 0.0042, 0.005),
     sightDotMaterial(0xff6b24),
   );
-  orangeBead.position.set(0, sightY, -0.546);
+  orangeBead.position.set(0, 0.056, -0.546);
   root.add(orangeBead);
 
   // Loading-port 12-gauge red shotgun shell (`magazine` slides up into underside loading gate).
@@ -131,7 +145,7 @@ export function buildRemington870(): WeaponModel {
   const magazineHand = anchor(magazine, [0, -0.024, 0], [0.1, 0, 0]);
   const muzzle = anchor(root, [0, 0.024, -0.572]);
   const ejection = anchor(root, [0.024, 0.016, -0.016]);
-  const sight = anchor(root, [0, sightY, 0.056]);
+  const sight = anchor(root, [0, sightY, sightZ]);
 
   return {
     root,
@@ -144,10 +158,11 @@ export function buildRemington870(): WeaponModel {
     slide,
     slideTravel: 0.072,
     action: 'pump',
+    recoilProfile: 'shotgun',
     muzzle,
     ejection,
     sight,
-    aimDistance: 0.17,
+    aimDistance,
     hip: {
       position: new THREE.Vector3(0.16, -0.155, -0.3),
       rotation: new THREE.Euler(0.016, -0.04, -0.022),

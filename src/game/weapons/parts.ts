@@ -1,6 +1,9 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import type { OpticId } from '../../core/weapon';
 import { applySurface, surface, surfaceMesh } from '../materials';
 import type { SurfaceName } from '../materials';
+import type { WeaponModel } from './model';
 
 /**
  * Shared procedural firearm building blocks used across the 8 weapon models.
@@ -446,6 +449,393 @@ export function buildSniperScope(
   g.add(frontLens, rearLens);
 
   return railTopY + centerY;
+}
+
+/**
+ * Aimpoint Micro T-2 tubular red dot sight (ref: 46-aimpoint-t2-rear.png, 47-aimpoint-t2-mount.jpg).
+ * Returns the exact optical centerline Y height.
+ */
+export function buildMicroRedDot(
+  parent: THREE.Object3D,
+  railTopY: number,
+  zCenter: number,
+  compact = false,
+): number {
+  const g = new THREE.Group();
+  g.position.set(0, railTopY, zCenter);
+  parent.add(g);
+
+  const scale = compact ? 0.78 : 1;
+  const centerY = compact ? 0.021 : 0.032;
+  const tubeR = 0.0145 * scale;
+  const innerR = 0.0115 * scale;
+  const tubeLen = 0.064 * scale;
+
+  // Skeletonized low/mid Picatinny mount base.
+  g.add(
+    partBox(
+      'steel-dark',
+      [0.024 * scale, centerY - tubeR + 0.004, 0.044 * scale],
+      [0, (centerY - tubeR) / 2 + 0.002, 0],
+    ),
+  );
+  // Clamping cross-bolt on left side of mount.
+  g.add(
+    uprightCyl(
+      'gun-steel',
+      0.0038 * scale,
+      0.0038 * scale,
+      0.006,
+      [-0.014 * scale, 0.007, 0],
+      [0, 0, Math.PI / 2],
+      10,
+    ),
+  );
+
+  // Hollow thin-wall cylindrical tube (ring of 12 slim housing staves around an open bore).
+  const ringSegs = 12;
+  const wallT = Math.max(0.0022, tubeR - innerR);
+  const segW = (2 * Math.PI * ((tubeR + innerR) / 2)) / ringSegs + 0.0012;
+  for (let i = 0; i < ringSegs; i++) {
+    const a = (i / ringSegs) * Math.PI * 2;
+    const midR = innerR + wallT / 2;
+    const stave = partBox(
+      'steel-dark',
+      [segW, wallT, tubeLen],
+      [Math.sin(a) * midR, centerY + Math.cos(a) * midR, 0],
+      [0, 0, -a],
+    );
+    g.add(stave);
+  }
+
+  // Right-side signature knurled rotary intensity knob & battery cap (ref: 46-aimpoint-t2-rear.png).
+  g.add(
+    uprightCyl(
+      'gun-steel',
+      0.011 * scale,
+      0.011 * scale,
+      0.013 * scale,
+      [tubeR + 0.004 * scale, centerY - 0.002, 0.005 * scale],
+      [0, 0, Math.PI / 2],
+      14,
+    ),
+  );
+  // Top elevation turret protective wings + recessed cap.
+  g.add(
+    partBox(
+      'steel-dark',
+      [0.016 * scale, 0.006 * scale, 0.018 * scale],
+      [0, centerY + tubeR + 0.0015, -0.004 * scale],
+    ),
+  );
+
+  // Subtle ruby-coated optical lens + crisp glowing 2 MOA red dot.
+  const lens = new THREE.Mesh(
+    new THREE.CircleGeometry(innerR - 0.0005, 18),
+    new THREE.MeshStandardMaterial({
+      color: 0x301614,
+      metalness: 0.25,
+      roughness: 0.08,
+      transparent: true,
+      opacity: 0.16,
+      depthWrite: false,
+    }),
+  );
+  lens.position.set(0, centerY, -0.004 * scale);
+  g.add(lens);
+
+  const reticle = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.015 * scale, 0.015 * scale),
+    new THREE.MeshBasicMaterial({
+      map: holoReticleTexture('#ff2e22', false),
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      toneMapped: false,
+    }),
+  );
+  reticle.position.set(0, centerY, -0.005 * scale);
+  g.add(reticle);
+
+  return railTopY + centerY;
+}
+
+/**
+ * Trijicon ACOG TA31 4×32 prism combat scope (ref: 44-acog-ta31-side.jpg, 45-acog-ta31-angle.jpg).
+ * Features the unmistakable flared forward objective hood, glowing top fiber-optic tube,
+ * twin knurled turrets, and flat-top thumbscrew mount.
+ */
+export function buildAcogScope(parent: THREE.Object3D, railTopY: number, zCenter: number): number {
+  const g = new THREE.Group();
+  g.position.set(0, railTopY, zCenter);
+  parent.add(g);
+
+  const centerY = 0.04;
+  // Flat-top TA51 Picatinny clamp + dual knurled thumbscrews.
+  g.add(partBox('steel-dark', [0.028, 0.015, 0.095], [0, 0.0075, 0.005]));
+  g.add(partBox('steel-dark', [0.022, 0.014, 0.072], [0, 0.02, 0.004]));
+  for (const tz of [-0.024, 0.032]) {
+    g.add(
+      uprightCyl('gun-steel', 0.0068, 0.0068, 0.009, [-0.018, 0.008, tz], [0, 0, Math.PI / 2], 12),
+    );
+  }
+
+  // Tapered rear ocular bell + main prism body + iconic flared objective bell (-Z).
+  g.add(barrelCyl('steel-dark', 0.017, 0.0185, 0.036, [0, centerY, 0.068], 18));
+  g.add(barrelCyl('steel-dark', 0.018, 0.016, 0.044, [0, centerY, 0.03], 18));
+  g.add(barrelCyl('steel-dark', 0.024, 0.018, 0.044, [0, centerY, -0.014], 18));
+  g.add(barrelCyl('steel-dark', 0.025, 0.024, 0.044, [0, centerY, -0.056], 18));
+  // Distinctive top brow overhang over objective bell.
+  g.add(partBox('steel-dark', [0.026, 0.008, 0.046], [0, centerY + 0.022, -0.058]));
+
+  // Signature glowing tritium/fiber-optic light collector spine running along the top!
+  const fiberMat = new THREE.MeshBasicMaterial({ color: 0x4dff68 });
+  const fiber = new THREE.Mesh(new THREE.CylinderGeometry(0.0036, 0.0036, 0.072, 10), fiberMat);
+  fiber.rotation.x = Math.PI / 2;
+  fiber.position.set(0, centerY + 0.0265, -0.034);
+  g.add(fiber);
+
+  // Top elevation and right windage turret caps.
+  g.add(uprightCyl('gun-steel', 0.009, 0.0095, 0.012, [0, centerY + 0.022, 0.018], undefined, 14));
+  g.add(
+    uprightCyl('gun-steel', 0.009, 0.0095, 0.012, [0.022, centerY, 0.018], [0, 0, Math.PI / 2], 14),
+  );
+
+  // Dark AR-coated lenses.
+  const lensMat = new THREE.MeshStandardMaterial({
+    color: 0x0b222c,
+    metalness: 0.78,
+    roughness: 0.08,
+  });
+  const frontLens = new THREE.Mesh(new THREE.CircleGeometry(0.022, 18), lensMat);
+  frontLens.position.set(0, centerY, -0.0785);
+  frontLens.rotation.y = Math.PI;
+  const rearLens = new THREE.Mesh(new THREE.CircleGeometry(0.0155, 18), lensMat);
+  rearLens.position.set(0, centerY, 0.0865);
+  g.add(frontLens, rearLens);
+
+  return railTopY + centerY;
+}
+
+/**
+ * Vortex Razor HD Gen II-E 1–6×24 LPVO on a dual-ring cantilever mount
+ * (ref: 48-vortex-lpvo-cantilever.jpg, 49-vortex-lpvo-profile.jpg).
+ */
+export function buildLpvoScope(parent: THREE.Object3D, railTopY: number, zCenter: number): number {
+  const g = new THREE.Group();
+  g.position.set(0, railTopY, zCenter);
+  parent.add(g);
+
+  const centerY = 0.042;
+  // Cantilevered dual-ring Picatinny mount.
+  g.add(partBox('steel-dark', [0.026, 0.013, 0.11], [0, 0.0065, 0.006]));
+  for (const rz of [-0.046, 0.038]) {
+    g.add(partBox('steel-dark', [0.024, 0.02, 0.022], [0, 0.02, rz]));
+    g.add(barrelCyl('steel-dark', 0.0195, 0.0195, 0.022, [0, centerY, rz], 18));
+  }
+
+  // Continuous 30mm bronze/dark-anodized Razor tube (longer forward straight objective).
+  g.add(barrelCyl('gun-steel', 0.0155, 0.0155, 0.24, [0, centerY, -0.024], 20));
+  // Subtle forward objective collar (-Z).
+  g.add(barrelCyl('gun-steel', 0.0175, 0.016, 0.028, [0, centerY, -0.148], 20));
+  // Flared ocular bell + ribbed magnification throw ring with throw lever (+Z).
+  g.add(barrelCyl('gun-steel', 0.0155, 0.0205, 0.03, [0, centerY, 0.098], 20));
+  g.add(barrelCyl('steel-dark', 0.022, 0.022, 0.022, [0, centerY, 0.116], 20));
+  g.add(
+    partBox('steel-dark', [0.006, 0.015, 0.006], [0.016, centerY + 0.018, 0.116], [0, 0, -0.5]),
+  );
+  g.add(barrelCyl('gun-steel', 0.021, 0.021, 0.044, [0, centerY, 0.148], 20));
+
+  // Signature oversized Razor elevation, windage, and illumination turrets.
+  g.add(partBox('gun-steel', [0.035, 0.035, 0.036], [0, centerY, -0.002]));
+  g.add(uprightCyl('steel-dark', 0.015, 0.0155, 0.02, [0, centerY + 0.025, -0.002], undefined, 16));
+  g.add(
+    uprightCyl(
+      'steel-dark',
+      0.013,
+      0.0135,
+      0.018,
+      [0.024, centerY, -0.002],
+      [0, 0, -Math.PI / 2],
+      16,
+    ),
+  );
+  g.add(
+    uprightCyl(
+      'steel-dark',
+      0.013,
+      0.0135,
+      0.018,
+      [-0.024, centerY, -0.002],
+      [0, 0, Math.PI / 2],
+      16,
+    ),
+  );
+
+  // Emerald-tinted front & rear glass lenses.
+  const lensMat = new THREE.MeshStandardMaterial({
+    color: 0x0d2b24,
+    metalness: 0.78,
+    roughness: 0.07,
+  });
+  const frontLens = new THREE.Mesh(new THREE.CircleGeometry(0.0155, 18), lensMat);
+  frontLens.position.set(0, centerY, -0.1625);
+  frontLens.rotation.y = Math.PI;
+  const rearLens = new THREE.Mesh(new THREE.CircleGeometry(0.0185, 18), lensMat);
+  rearLens.position.set(0, centerY, 0.1705);
+  g.add(frontLens, rearLens);
+
+  return railTopY + centerY;
+}
+
+export interface MountedOpticResult {
+  readonly sightY: number;
+  readonly sightZ: number;
+  readonly aimDistance: number;
+}
+
+/**
+ * Mount any non-iron `OpticId` cleanly onto a weapon rail and return exact sight alignment.
+ */
+export function buildMountedOptic(
+  parent: THREE.Object3D,
+  opticId: Exclude<OpticId, 'irons'>,
+  railTopY: number,
+  zCenter: number,
+  options?: { readonly compact?: boolean; readonly sightZOffset?: number },
+): MountedOpticResult {
+  const compact = options?.compact ?? false;
+  switch (opticId) {
+    case 'red-dot': {
+      const sightY = buildMicroRedDot(parent, railTopY, zCenter, compact);
+      return {
+        sightY,
+        sightZ: zCenter + (options?.sightZOffset ?? 0),
+        aimDistance: compact ? 0.34 : 0.22,
+      };
+    }
+    case 'holo': {
+      const sightY = buildEotechHolo(parent, railTopY, zCenter);
+      return {
+        sightY,
+        sightZ: zCenter + 0.01,
+        aimDistance: 0.215,
+      };
+    }
+    case 'acog': {
+      const sightY = buildAcogScope(parent, railTopY, zCenter);
+      return {
+        sightY,
+        sightZ: zCenter + 0.085,
+        aimDistance: 0.14,
+      };
+    }
+    case 'lpvo': {
+      const sightY = buildLpvoScope(parent, railTopY, zCenter);
+      return {
+        sightY,
+        sightZ: zCenter + 0.16,
+        aimDistance: 0.135,
+      };
+    }
+    case 'sniper-scope': {
+      const sightY = buildSniperScope(parent, railTopY, zCenter);
+      return {
+        sightY,
+        sightZ: zCenter + 0.18,
+        aimDistance: 0.135,
+      };
+    }
+  }
+}
+
+/**
+ * Collapse dozens of static procedural weapon parts (rails, cooling ribs, screws, sight housings)
+ * into one merged `THREE.Mesh` per shared opaque material. Cuts per-weapon draw calls by ~90%
+ * while keeping animated sub-groups (`slide`, `magazine`) and transparent reticles intact!
+ */
+export function optimizeWeaponGroup(
+  container: THREE.Object3D,
+  skipSubtrees: readonly (THREE.Object3D | undefined)[] = [],
+): void {
+  const skip = new Set<THREE.Object3D>();
+  for (const obj of skipSubtrees) {
+    if (obj) skip.add(obj);
+  }
+
+  container.updateMatrixWorld(true);
+  const invContainer = container.matrixWorld.clone().invert();
+  const buckets = new Map<THREE.Material, THREE.BufferGeometry[]>();
+  const toRemove: THREE.Mesh[] = [];
+
+  function walk(node: THREE.Object3D) {
+    for (const child of [...node.children]) {
+      if (skip.has(child)) continue;
+      if (child instanceof THREE.Mesh) {
+        const mesh = child as THREE.Mesh;
+        const mat = mesh.material;
+        const geo = mesh.geometry;
+        // Skip multi-material arrays and transparent/additive lenses & glowing reticles.
+        if (
+          !Array.isArray(mat) &&
+          !mat.transparent &&
+          mat.blending === THREE.NormalBlending &&
+          'position' in geo.attributes
+        ) {
+          const base = geo.index ? geo.toNonIndexed() : geo.clone();
+          // Ensure matching attributes (`position`, `normal`, `uv`) before merging.
+          if (!('normal' in base.attributes)) base.computeVertexNormals();
+          if (!('uv' in base.attributes)) {
+            const count = base.getAttribute('position').count;
+            base.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(count * 2), 2));
+          }
+          // Strip extra attributes like tangent/color if any differ across primitives.
+          for (const key of Object.keys(base.attributes)) {
+            if (key !== 'position' && key !== 'normal' && key !== 'uv') {
+              base.deleteAttribute(key);
+            }
+          }
+          const relMatrix = invContainer.clone().multiply(mesh.matrixWorld);
+          base.applyMatrix4(relMatrix);
+          const list = buckets.get(mat) ?? [];
+          list.push(base);
+          buckets.set(mat, list);
+          toRemove.push(mesh);
+        }
+      } else {
+        walk(child);
+      }
+    }
+  }
+
+  walk(container);
+
+  for (const mesh of toRemove) {
+    mesh.parent?.remove(mesh);
+    mesh.geometry.dispose();
+  }
+
+  for (const [mat, geos] of buckets) {
+    if (geos.length === 0) continue;
+    const merged = geos.length === 1 ? geos[0] : mergeGeometries(geos, false);
+    if (merged) {
+      container.add(new THREE.Mesh(merged, mat));
+    }
+    if (geos.length > 1) {
+      for (const g of geos) g.dispose();
+    }
+  }
+}
+
+/**
+ * Batch static meshes on `root`, `slide`, and `magazine` while leaving all animated
+ * groups, transparent lenses/reticles, and handhold anchors untouched.
+ */
+export function finalizeWeaponModel(model: WeaponModel): WeaponModel {
+  optimizeWeaponGroup(model.root, [model.slide, model.magazine]);
+  if (model.slide) optimizeWeaponGroup(model.slide, [model.boltHand]);
+  optimizeWeaponGroup(model.magazine, [model.magazineHand]);
+  return model;
 }
 
 /** Shared glowing tritium / white-dot sight material for iron sights. */

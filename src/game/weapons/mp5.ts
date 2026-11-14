@@ -1,10 +1,13 @@
 import * as THREE from 'three';
+import type { OpticId } from '../../core/weapon';
 import { surface } from '../materials';
 import type { WeaponModel } from './model';
 import {
   anchor,
   barrelCyl,
   buildCurvedMagazine,
+  buildMountedOptic,
+  buildPicatinnyRail,
   fromSideProfile,
   partBox,
   sightDotMaterial,
@@ -54,7 +57,7 @@ function handguardShape(): THREE.Shape {
 
 const GRIP_RAKE = -0.32;
 
-export function buildMP5(): WeaponModel {
+export function buildMP5(opticId: OpticId = 'red-dot'): WeaponModel {
   const root = new THREE.Group();
 
   // Stamped steel upper receiver (lower rectangular channel + iconic upper cocking tube).
@@ -106,7 +109,9 @@ export function buildMP5(): WeaponModel {
   root.add(partBox('glove', [0.036, 0.102, 0.02], [0, -0.018, 0.292], [0.08, 0, 0]));
 
   // Rear HK rotary diopter drum sight (centered cleanly at y = 0.0565).
-  const sightY = 0.0565;
+  let sightY = 0.0565;
+  let sightZ = 0.064;
+  let aimDistance = 0.165;
   root.add(partBox('steel-dark', [0.022, 0.012, 0.026], [0, 0.045, 0.058]));
   // Open rear diopter arch (left/right drum cheeks so center sight line is crystal clear!).
   root.add(partBox('steel-dark', [0.0055, 0.018, 0.014], [-0.0075, sightY, 0.058]));
@@ -129,6 +134,17 @@ export function buildMP5(): WeaponModel {
   frontDot.position.set(0, sightY, -0.285);
   root.add(frontPost, frontDot);
 
+  // Optional HK low-profile claw mount rail + optic (default Aimpoint Micro T-2 red dot!).
+  if (opticId !== 'irons') {
+    // Low-profile HK receiver claw rail sitting cleanly over the tubular receiver.
+    root.add(partBox('steel-dark', [0.026, 0.008, 0.11], [0, 0.045, -0.024]));
+    buildPicatinnyRail(root, 0.048, -0.075, 0.028, 'steel-dark');
+    const mounted = buildMountedOptic(root, opticId, 0.054, -0.022);
+    sightY = mounted.sightY;
+    sightZ = mounted.sightZ;
+    aimDistance = mounted.aimDistance;
+  }
+
   // Slim curved 30-round steel 9×19mm magazine.
   const magazine = new THREE.Group();
   magazine.position.set(0, -0.034, -0.078);
@@ -142,7 +158,7 @@ export function buildMP5(): WeaponModel {
   const magazineHand = anchor(magazine, [0, -0.105, -0.016], [0.1, 0, 0]);
   const muzzle = anchor(root, [0, 0.012, -0.352]);
   const ejection = anchor(root, [0.022, 0.02, -0.018]);
-  const sight = anchor(root, [0, sightY, 0.064]);
+  const sight = anchor(root, [0, sightY, sightZ]);
 
   return {
     root,
@@ -155,10 +171,11 @@ export function buildMP5(): WeaponModel {
     slide,
     slideTravel: 0.042,
     action: 'slide',
+    recoilProfile: 'smg',
     muzzle,
     ejection,
     sight,
-    aimDistance: 0.165,
+    aimDistance,
     hip: {
       position: new THREE.Vector3(0.15, -0.152, -0.28),
       rotation: new THREE.Euler(0.018, -0.042, -0.025),

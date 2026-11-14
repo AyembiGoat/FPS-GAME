@@ -1,10 +1,12 @@
 import * as THREE from 'three';
+import type { OpticId } from '../../core/weapon';
 import { surface } from '../materials';
 import type { WeaponModel } from './model';
 import { FINGER } from './model';
 import {
   anchor,
   barrelCyl,
+  buildMountedOptic,
   buildPicatinnyRail,
   fromSideProfile,
   partBox,
@@ -75,7 +77,7 @@ function fixedBarrelProfile(): THREE.Shape {
   return s;
 }
 
-export function buildDesertEagle(): WeaponModel {
+export function buildDesertEagle(opticId: OpticId = 'irons'): WeaponModel {
   const root = new THREE.Group();
 
   // Heavy brushed stainless steel lower frame & wraparound black rubberized combat grip panels.
@@ -153,6 +155,19 @@ export function buildDesertEagle(): WeaponModel {
   magazine.add(partBox('polymer-black', [0.028, 0.01, 0.056], [0, -0.06, 0]));
   root.add(magazine);
 
+  // Optional top-rail pistol optic (compact Micro T-2 red dot or heavy hunting ACOG 3.5×!).
+  let finalSightY = sightY;
+  let finalSightZ = 0.092;
+  let aimDistance = 0.34;
+  if (opticId !== 'irons') {
+    const mounted = buildMountedOptic(root, opticId, 0.041, -0.078, {
+      compact: opticId === 'red-dot',
+    });
+    finalSightY = mounted.sightY;
+    finalSightZ = mounted.sightZ;
+    aimDistance = opticId === 'acog' ? 0.16 : 0.32;
+  }
+
   // Two-handed modern thumbs-forward pistol grip anchors (scaled to the beefier .50 AE grip).
   const gripAnchor = anchor(root, [0, -0.078, 0.072], [GRIP_RAKE, 0, 0]);
   const trigger = anchor(root, [0.015, -0.031, -0.006]);
@@ -160,7 +175,7 @@ export function buildDesertEagle(): WeaponModel {
   const magazineHand = anchor(magazine, [0, -0.058, 0]);
   const muzzle = anchor(root, [0, 0.019, -0.166]);
   const ejection = anchor(root, [0.02, 0.024, -0.005]);
-  const sight = anchor(root, [0, sightY, 0.092]);
+  const sight = anchor(root, [0, finalSightY, finalSightZ]);
 
   return {
     root,
@@ -177,10 +192,11 @@ export function buildDesertEagle(): WeaponModel {
     slide,
     slideTravel: 0.042,
     action: 'slide',
+    recoilProfile: 'hand-cannon',
     muzzle,
     ejection,
     sight,
-    aimDistance: 0.34,
+    aimDistance,
     hip: {
       position: new THREE.Vector3(0.165, -0.18, -0.35),
       rotation: new THREE.Euler(0.035, -0.05, -0.045),

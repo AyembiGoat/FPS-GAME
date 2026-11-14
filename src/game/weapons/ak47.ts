@@ -1,10 +1,13 @@
 import * as THREE from 'three';
+import type { OpticId } from '../../core/weapon';
 import { surface } from '../materials';
 import type { WeaponModel } from './model';
 import {
   anchor,
   barrelCyl,
   buildCurvedMagazine,
+  buildMountedOptic,
+  buildPicatinnyRail,
   fromSideProfile,
   partBox,
   sightDotMaterial,
@@ -42,7 +45,7 @@ function gripShape(): THREE.Shape {
 
 const GRIP_RAKE = -0.32;
 
-export function buildAK47(): WeaponModel {
+export function buildAK47(opticId: OpticId = 'irons'): WeaponModel {
   const root = new THREE.Group();
 
   // Slab-sided stamped steel receiver (y: -0.034..0.018, z: -0.105..0.11).
@@ -117,6 +120,22 @@ export function buildAK47(): WeaponModel {
   tipDot.position.set(0, 0.048, -0.495);
   root.add(frontPost, tipDot);
 
+  // Optional Soviet side-dovetail optic rail bracket when mounting a modern optic.
+  let sightY = 0.048;
+  let sightZ = -0.095;
+  let aimDistance = 0.24;
+  if (opticId !== 'irons') {
+    // Left-side dovetail clamp + curved riser arm wrapping cleanly over the dust cover.
+    root.add(partBox('steel-dark', [0.008, 0.018, 0.092], [-0.02, -0.002, 0.012]));
+    root.add(partBox('steel-dark', [0.008, 0.056, 0.048], [-0.022, 0.024, 0.008]));
+    root.add(partBox('steel-dark', [0.026, 0.008, 0.056], [-0.012, 0.048, 0.006]));
+    buildPicatinnyRail(root, 0.048, -0.072, 0.088, 'steel-dark');
+    const mounted = buildMountedOptic(root, opticId, 0.054, 0.002);
+    sightY = mounted.sightY;
+    sightZ = mounted.sightZ;
+    aimDistance = mounted.aimDistance;
+  }
+
   // Iconic steeply curved 30-round steel 7.62×39mm banana magazine.
   const magazine = new THREE.Group();
   magazine.position.set(0, -0.032, -0.058);
@@ -130,8 +149,7 @@ export function buildAK47(): WeaponModel {
   const magazineHand = anchor(magazine, [0, -0.11, -0.032], [0.22, 0, 0]);
   const muzzle = anchor(root, [0, 0.004, -0.554]);
   const ejection = anchor(root, [0.022, 0.018, -0.042]);
-  // Eye lines up right behind the tangent leaf notch looking down the barrel at the front post.
-  const sight = anchor(root, [0, 0.048, -0.095]);
+  const sight = anchor(root, [0, sightY, sightZ]);
 
   return {
     root,
@@ -144,10 +162,11 @@ export function buildAK47(): WeaponModel {
     slide,
     slideTravel: 0.058,
     action: 'slide',
+    recoilProfile: 'heavy-rifle',
     muzzle,
     ejection,
     sight,
-    aimDistance: 0.24,
+    aimDistance,
     hip: {
       position: new THREE.Vector3(0.16, -0.158, -0.3),
       rotation: new THREE.Euler(0.018, -0.04, -0.022),

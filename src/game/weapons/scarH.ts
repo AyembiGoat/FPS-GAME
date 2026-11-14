@@ -1,13 +1,15 @@
 import * as THREE from 'three';
+import type { OpticId } from '../../core/weapon';
 import { surface } from '../materials';
 import type { WeaponModel } from './model';
 import {
   anchor,
   barrelCyl,
-  buildCompactReflex,
+  buildMountedOptic,
   buildPicatinnyRail,
   fromSideProfile,
   partBox,
+  sightDotMaterial,
   underHandguardAnchor,
   uprightCyl,
 } from './parts';
@@ -71,7 +73,7 @@ function gripShape(): THREE.Shape {
 
 const GRIP_RAKE = -0.3;
 
-export function buildScarH(): WeaponModel {
+export function buildScarH(opticId: OpticId = 'acog'): WeaponModel {
   const root = new THREE.Group();
 
   // Tall monolithic extruded FDE upper receiver (signature SCAR boxy silhouette).
@@ -142,9 +144,33 @@ export function buildScarH(): WeaponModel {
   magazine.add(partBox('steel-dark', [0.03, 0.011, 0.076], [0, -0.154, 0]));
   root.add(magazine);
 
-  // Compact FDE tactical reflex optic (1.8×) on top rail + flush folded rear BUIS.
-  root.add(partBox('steel-dark', [0.022, 0.007, 0.026], [0, 0.073, 0.088]));
-  const sightY = buildCompactReflex(root, 0.072, -0.012);
+  // Optic / flip-up SCAR iron sights.
+  let sightY = 0.092;
+  let sightZ = 0.088;
+  let aimDistance = 0.2;
+  if (opticId === 'irons') {
+    root.add(partBox('steel-dark', [0.022, 0.012, 0.024], [0, 0.078, 0.086]));
+    root.add(partBox('steel-dark', [0.005, 0.016, 0.012], [-0.007, 0.092, 0.086]));
+    root.add(partBox('steel-dark', [0.005, 0.016, 0.012], [0.007, 0.092, 0.086]));
+    root.add(partBox('steel-dark', [0.018, 0.003, 0.012], [0, 0.085, 0.086]));
+    // Raised gas-block hooded front sight post.
+    root.add(partBox('steel-dark', [0.003, 0.024, 0.016], [-0.01, 0.088, -0.326]));
+    root.add(partBox('steel-dark', [0.003, 0.024, 0.016], [0.01, 0.088, -0.326]));
+    root.add(partBox('steel-dark', [0.0024, 0.016, 0.003], [0, 0.086, -0.326]));
+    const dot = new THREE.Mesh(
+      new THREE.BoxGeometry(0.0028, 0.0028, 0.0035),
+      sightDotMaterial(0xffb84d),
+    );
+    dot.position.set(0, 0.092, -0.326);
+    root.add(dot);
+  } else {
+    // Flush folded rear BUIS + mounted combat optic (default Trijicon ACOG 3.5×).
+    root.add(partBox('steel-dark', [0.022, 0.007, 0.026], [0, 0.073, 0.088]));
+    const mounted = buildMountedOptic(root, opticId, 0.072, -0.012);
+    sightY = mounted.sightY;
+    sightZ = mounted.sightZ;
+    aimDistance = mounted.aimDistance;
+  }
 
   // Anchors.
   const gripAnchor = anchor(root, [0, -0.086, 0.066], [GRIP_RAKE, 0, 0]);
@@ -153,7 +179,7 @@ export function buildScarH(): WeaponModel {
   const magazineHand = anchor(magazine, [0, -0.092, 0], [0.04, 0, 0]);
   const muzzle = anchor(root, [0, 0.028, -0.522]);
   const ejection = anchor(root, [0.024, 0.034, -0.028]);
-  const sight = anchor(root, [0, sightY, 0.012]);
+  const sight = anchor(root, [0, sightY, sightZ]);
 
   return {
     root,
@@ -166,10 +192,12 @@ export function buildScarH(): WeaponModel {
     slide,
     slideTravel: 0.056,
     action: 'slide',
+    muzzleBrake: true,
+    recoilProfile: 'heavy-rifle',
     muzzle,
     ejection,
     sight,
-    aimDistance: 0.215,
+    aimDistance,
     hip: {
       position: new THREE.Vector3(0.165, -0.172, -0.3),
       rotation: new THREE.Euler(0.018, -0.042, -0.025),

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import type { WeaponId, WeaponSpec } from '../../core/weapon';
-import { getWeaponSpec } from '../../core/weapon';
+import type { OpticId, WeaponId, WeaponSpec } from '../../core/weapon';
+import { clampWeaponOptic, getWeaponSpec } from '../../core/weapon';
 import { buildWeaponModel } from './index';
 
 /**
@@ -13,7 +13,7 @@ export function createWeaponTurntable(container: HTMLElement) {
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.15;
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
   renderer.domElement.className = 'armory-stage-canvas';
   container.append(renderer.domElement);
 
@@ -81,9 +81,10 @@ export function createWeaponTurntable(container: HTMLElement) {
 
   const camera = new THREE.PerspectiveCamera(28, 16 / 9, 0.02, 12);
 
-  // Cache built turntable models so switching tabs/weapons in Armory is instant.
-  const cache = new Map<WeaponId, { group: THREE.Group; radius: number }>();
+  // Cache built turntable models per weapon+optic so swapping attachments in Armory is instant.
+  const cache = new Map<string, { group: THREE.Group; radius: number }>();
   let currentId: WeaponId | null = null;
+  let currentKey = '';
   let currentEntry: { group: THREE.Group; radius: number } | null = null;
 
   let yaw = 0.24; // Showcase clean left-to-right 3/4 side silhouette!
@@ -96,10 +97,11 @@ export function createWeaponTurntable(container: HTMLElement) {
   let rafId = 0;
   let lastFrame = 0;
 
-  function loadWeapon(spec: WeaponSpec) {
-    let entry = cache.get(spec.id);
+  function loadWeapon(spec: WeaponSpec, opticId: OpticId) {
+    const key = `${spec.id}:${opticId}`;
+    let entry = cache.get(key);
     if (!entry) {
-      const built = buildWeaponModel(spec);
+      const built = buildWeaponModel(spec, opticId);
       const wrapper = new THREE.Group();
       // Rotate gun so barrel (-Z) points cleanly to the right (+X) in hero side-profile!
       built.root.rotation.y = -Math.PI / 2;
@@ -111,7 +113,7 @@ export function createWeaponTurntable(container: HTMLElement) {
       wrapper.add(built.root);
       const radius = Math.max(size.x * 0.56, size.y * 0.9, 0.24);
       entry = { group: wrapper, radius };
-      cache.set(spec.id, entry);
+      cache.set(key, entry);
     }
     return entry;
   }
@@ -182,15 +184,21 @@ export function createWeaponTurntable(container: HTMLElement) {
   window.addEventListener('resize', resize);
 
   return {
-    setWeapon(id: WeaponId) {
-      if (id === currentId && currentEntry) return;
+    setWeapon(id: WeaponId, opticId?: OpticId) {
+      const resolvedOptic = clampWeaponOptic(id, opticId);
+      const key = `${id}:${resolvedOptic}`;
+      if (key === currentKey && currentEntry) return;
+      const sameWeapon = id === currentId;
       if (currentEntry) pivot.remove(currentEntry.group);
       currentId = id;
-      currentEntry = loadWeapon(getWeaponSpec(id));
+      currentKey = key;
+      currentEntry = loadWeapon(getWeaponSpec(id), resolvedOptic);
       pivot.add(currentEntry.group);
-      yaw = 0.26;
-      pitch = 0.07;
-      idleDelay = 0.6;
+      if (!sameWeapon) {
+        yaw = 0.26;
+        pitch = 0.07;
+        idleDelay = 0.6;
+      }
       resize();
       if (active) renderer.render(scene, camera);
     },
