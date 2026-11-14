@@ -29,6 +29,7 @@ export function createHumanInput(canvas: HTMLCanvasElement) {
   let aimToggled = false;
   let leanToggled: -1 | 0 | 1 = 0;
   let pendingSwitch: WeaponSlot | null = null;
+  let pendingZoomToggle = false;
   let activeSlotHint: WeaponSlot = 'primary';
   let lastWheelAt = 0;
 
@@ -51,6 +52,7 @@ export function createHumanInput(canvas: HTMLCanvasElement) {
       down(event.code);
       if (event.code === 'Digit1') requestSlot('primary');
       if (event.code === 'Digit2') requestSlot('secondary');
+      if (event.code === 'KeyV') pendingZoomToggle = true;
       if (event.code === 'KeyR') aimToggled = false;
       if (leanMode === 'toggle') {
         if (event.code === 'KeyQ') leanToggled = leanToggled === -1 ? 0 : -1;
@@ -103,6 +105,7 @@ export function createHumanInput(canvas: HTMLCanvasElement) {
       aimToggled = false;
       leanToggled = 0;
       pendingSwitch = null;
+      pendingZoomToggle = false;
     }
   });
 
@@ -155,6 +158,7 @@ export function createHumanInput(canvas: HTMLCanvasElement) {
         fire: active('Fire'),
         reload: active('KeyR'),
         aim: aimMode === 'toggle' ? aimToggled : active('Aim'),
+        toggleZoom: pendingZoomToggle,
         lean: leanMode === 'toggle' ? leanToggled : axis('KeyE', 'KeyQ'),
         switchSlot: pendingSwitch,
         yawDelta: yaw,
@@ -162,6 +166,7 @@ export function createHumanInput(canvas: HTMLCanvasElement) {
       };
       pressed.clear();
       pendingSwitch = null;
+      pendingZoomToggle = false;
       yaw = 0;
       pitch = 0;
       return input;

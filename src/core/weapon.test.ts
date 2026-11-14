@@ -5,12 +5,15 @@ import {
   AK47,
   AWM,
   createWeapon,
+  currentOpticZoom,
   DEFAULT_LOADOUT,
   DESERT_EAGLE,
+  effectiveWeaponSpec,
   equipLoadout,
   HK416,
   M1911,
   MP5,
+  OPTICS,
   pelletDirections,
   REMINGTON_870,
   SCAR_H,
@@ -240,5 +243,46 @@ describe('weapon slot switching & loadouts', () => {
     expect(updated.weaponId).toBe('awm');
     expect(updated.rounds).toBe(AWM.magazineSize);
     expect(updated.slotRounds.secondary).toBe(DESERT_EAGLE.magazineSize);
+  });
+
+  it('applies compatible optics to zoom and ADS time and rejects incompatible ones', () => {
+    const scarDefault = effectiveWeaponSpec('scar-h');
+    expect(scarDefault.opticId).toBe('acog');
+    expect(scarDefault.aimZoom).toBe(3.5);
+    expect(scarDefault.aimTime).toBeCloseTo(SCAR_H.aimTime + OPTICS.acog.aimTimeBonus, 5);
+
+    const hkLpvo = effectiveWeaponSpec('hk416', 'lpvo');
+    expect(hkLpvo.opticId).toBe('lpvo');
+    expect(hkLpvo.zoomStages).toEqual([2, 5]);
+    expect(currentOpticZoom(hkLpvo, 0)).toBe(2);
+    expect(currentOpticZoom(hkLpvo, 1)).toBe(5);
+
+    // M1911 cannot mount a sniper scope — falls back cleanly to irons.
+    const invalidPistolOptic = effectiveWeaponSpec('m1911', 'sniper-scope');
+    expect(invalidPistolOptic.opticId).toBe('irons');
+  });
+
+  it('toggles variable magnification on LPVO and sniper scopes only', () => {
+    const lpvoLoadout = {
+      primary: 'hk416' as const,
+      secondary: 'm1911' as const,
+      optics: { hk416: 'lpvo' as const },
+    };
+    const start = createWeapon(lpvoLoadout, 'primary');
+    expect(start.zoomStage).toBe(0);
+
+    const toggled = stepWeapon(start, { ...idle, aim: true, toggleZoom: true }, dt);
+    expect(toggled.events).toContain('zoom-toggle');
+    expect(toggled.state.zoomStage).toBe(1);
+
+    const back = stepWeapon(toggled.state, { ...idle, aim: true, toggleZoom: true }, dt);
+    expect(back.events).toContain('zoom-toggle');
+    expect(back.state.zoomStage).toBe(0);
+
+    // Fixed holographic sight ignores zoom toggles.
+    const fixedStart = createWeapon(DEFAULT_LOADOUT, 'primary');
+    const fixedToggle = stepWeapon(fixedStart, { ...idle, aim: true, toggleZoom: true }, dt);
+    expect(fixedToggle.events).toEqual([]);
+    expect(fixedToggle.state.zoomStage).toBe(0);
   });
 });

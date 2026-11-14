@@ -5,13 +5,21 @@ import type { PlayerInput, PlayerState } from './player';
 import { createPlayer, eyePosition, stepPlayer } from './player';
 import type { Vec3 } from './vec';
 import { add, scale } from './vec';
-import type { Loadout, WeaponId, WeaponInput, WeaponSlot, WeaponSpec, WeaponState } from './weapon';
+import type {
+  EffectiveWeaponSpec,
+  Loadout,
+  WeaponId,
+  WeaponInput,
+  WeaponSlot,
+  WeaponState,
+} from './weapon';
 import {
   createWeapon,
   DEFAULT_LOADOUT,
+  effectiveWeaponSpec,
   equipLoadout,
-  getWeaponSpec,
   pelletDirections,
+  resolveWeaponOptic,
   stepWeapon,
 } from './weapon';
 
@@ -60,6 +68,7 @@ export type GameEvent =
   | { readonly type: 'target-down'; readonly index: number; readonly distance: number }
   | { readonly type: 'targets-reset' }
   | { readonly type: 'weapon-switch'; readonly weaponId: WeaponId; readonly slot: WeaponSlot }
+  | { readonly type: 'zoom-toggle'; readonly zoom: number }
   | { readonly type: 'dry-fire' | 'reload-start' | 'reload-end' | 'jump' }
   | { readonly type: 'land'; readonly speed: number };
 
@@ -109,8 +118,11 @@ export function aimDirection(yaw: number, pitch: number): Vec3 {
   return { x: -Math.sin(yaw) * cosPitch, y: Math.sin(pitch), z: -Math.cos(yaw) * cosPitch };
 }
 
-export function activeWeaponSpec(state: GameState): WeaponSpec {
-  return getWeaponSpec(state.weapon.weaponId);
+export function activeWeaponSpec(state: GameState): EffectiveWeaponSpec {
+  return effectiveWeaponSpec(
+    state.weapon.weaponId,
+    resolveWeaponOptic(state.weapon.loadout, state.weapon.weaponId),
+  );
 }
 
 export const INITIAL_RUN_STATS: RunStats = {
@@ -202,7 +214,10 @@ export function stepGame(
   if (playerStep.landedSpeed !== null) events.push({ type: 'land', speed: playerStep.landedSpeed });
 
   const weaponStep = stepWeapon(state.weapon, input, dt);
-  const spec = getWeaponSpec(weaponStep.state.weaponId);
+  const spec = effectiveWeaponSpec(
+    weaponStep.state.weaponId,
+    resolveWeaponOptic(weaponStep.state.loadout, weaponStep.state.weaponId),
+  );
   let clearedThisStep = false;
 
   for (const event of weaponStep.events) {
@@ -212,6 +227,14 @@ export function stepGame(
         weaponId: weaponStep.state.weaponId,
         slot: weaponStep.state.activeSlot,
       });
+      continue;
+    }
+    if (event === 'zoom-toggle') {
+      const nextZoom =
+        spec.zoomStages.length === 2 && weaponStep.state.zoomStage === 1
+          ? spec.zoomStages[1]
+          : spec.zoomStages[0];
+      events.push({ type: 'zoom-toggle', zoom: nextZoom });
       continue;
     }
     if (event !== 'shot') {
