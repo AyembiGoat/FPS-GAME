@@ -3,6 +3,8 @@ import { createFixedLoop, SIM_STEP_SECONDS } from '../core/fixedLoop';
 import type { GameEvent, GameInput, GameState } from '../core/game';
 import { createGame, setGameLoadout, stepGame } from '../core/game';
 import { shootHouse } from '../core/maps/shootHouse';
+import type { GameModeId } from '../core/mode';
+import { DEFAULT_MODE, gameMode, isGameModeId } from '../core/mode';
 import { NO_INPUT } from '../core/player';
 import type { OpticId, WeaponId, WeaponSlot } from '../core/weapon';
 import { getWeaponSpec, isOpticId, isWeaponId } from '../core/weapon';
@@ -42,14 +44,25 @@ function play(runMode: 'auto' | 'bot' | 'play') {
   const view = createView(map, audio);
   let bot = createBot(map);
 
-  let previous = createGame(map, loadout.get(), 'primary');
+  const requestedMode = query.get('mode');
+  let currentMode: GameModeId = isGameModeId(requestedMode) ? requestedMode : DEFAULT_MODE;
+
+  let previous = createGame(map, { mode: currentMode, loadout: loadout.get() });
   let state = previous;
 
-  function resetMatch() {
-    previous = createGame(map, loadout.get(), 'primary');
+  function resetMatch(mode: GameModeId = currentMode) {
+    currentMode = mode;
+    previous = createGame(map, { mode, loadout: loadout.get() });
     state = previous;
     bot = createBot(map);
-    view.resetTargets(state);
+    view.resetRun(state);
+  }
+
+  function deployMode(mode: GameModeId) {
+    resetMatch(mode);
+    ui.resetRunUi();
+    audio.start();
+    requestPlay();
   }
 
   function applyWeaponEquip(weaponId?: WeaponId, slotOverride?: WeaponSlot) {
@@ -79,18 +92,22 @@ function play(runMode: 'auto' | 'bot' | 'play') {
 
   const ui = createGameUi({
     mode: runMode,
-    totalTargets: map.targets.length,
+    counts: { hostiles: map.enemySpawns.length, plates: map.targets.length },
     audio,
     settings,
     loadout,
     onRequestPlay: requestPlay,
-    onRestartRun: resetMatch,
+    onRestartRun: () => {
+      resetMatch();
+    },
     onQuitToTitle: () => {
       if (document.pointerLockElement === view.canvas) {
         document.exitPointerLock();
       }
       resetMatch();
     },
+    onDeployMode: deployMode,
+    currentMode: () => gameMode(currentMode),
   });
 
   // Live sync whenever the player changes weapons or mounted optics in Armory (even mid-run!).
@@ -203,6 +220,24 @@ function play(runMode: 'auto' | 'bot' | 'play') {
         ui.resetRunUi();
         drawCurrent(0);
       },
+      mode: () => currentMode,
+      setMode: (next) => {
+        if (!isGameModeId(next)) throw new Error(`Unknown mode: ${String(next)}`);
+        resetMatch(next);
+        ui.resetRunUi();
+        drawCurrent(0);
+        return state;
+      },
+      health: () => state.health,
+      hostiles: () =>
+        state.enemies.map((enemy) => ({
+          id: enemy.id,
+          behavior: enemy.behavior,
+          health: enemy.health,
+          aware: enemy.aware,
+          seen: enemy.seen,
+          position: { ...enemy.position },
+        })),
     };
     drawCurrent(0);
   } else {

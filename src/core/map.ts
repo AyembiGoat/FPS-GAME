@@ -14,6 +14,12 @@ export interface TargetSpawn {
   readonly facing: { readonly x: -1 | 0 | 1; readonly z: -1 | 0 | 1 };
 }
 
+/** Where a hostile combatant starts. Feet on the floor, yaw 0 facing -Z. */
+export interface EnemySpawn {
+  readonly position: Vec3;
+  readonly yaw: number;
+}
+
 /** A level, as plain data. Rendering builds its meshes from the same solids. */
 export interface GameMap {
   readonly name: string;
@@ -26,5 +32,8 @@ export interface GameMap {
   };
   readonly solids: readonly MapSolid[];
   readonly spawn: { readonly position: Vec3; readonly yaw: number };
+  /** Steel plates, used by the steel-target mode. */
   readonly targets: readonly TargetSpawn[];
+  /** Hostile start positions, used by the firefight mode. */
+  readonly enemySpawns: readonly EnemySpawn[];
 }

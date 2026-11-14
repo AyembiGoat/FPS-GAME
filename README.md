@@ -2,13 +2,21 @@
 
 A first-person shooter that runs in the browser, built with TypeScript and Three.js.
 
-**Status: first playable slice.** One small map, Shoot House, with walls you cannot
-walk through, an M1911 pistol held in two hands, and ten steel targets that fall when
-hit and stand back up once all are down. You can aim down the sights and lean round
-corners. Includes a live 3D title screen, pause overlay, persisted settings (sensitivity,
-ADS sensitivity, FOV, volume, crosshair colour & size, HUD scale, reduced motion),
-controls reference, and full tactical HUD with run telemetry. Single-player. There are
-no enemies yet.
+**Status: playable single-player, with two game modes.** Shoot House is one compound:
+a breach house, a yard and a sniper lane, with walls you cannot walk through.
+
+- **Firefight** — six hostile combatants hold the compound. They see you by sight and by
+  the sound of your rifle, take cover, aim, fire in bursts, reload and die when hit. You
+  have 100 health that regenerates after five seconds out of contact. Clear every hostile
+  to win; if your health reaches zero the run ends.
+- **Steel Targets** — the plate course: fourteen AR500 silhouettes to knock down.
+
+Both modes run on the same map, and the run restarts itself a few seconds after it ends.
+You can aim down the sights, lean round corners, and swap eight firearms. The shell
+includes a live 3D title screen, a Game Modes screen, pause overlay, persisted settings
+(sensitivity, ADS sensitivity, FOV, volume, crosshair colour & size, HUD scale, reduced
+motion), controls reference, and a HUD with health, objective progress and run telemetry.
+Single-player only; the hostiles are computer-controlled opponents.
 
 ## Quick start
 
@@ -19,7 +27,8 @@ npm install
 npm run dev
 ```
 
-Open the printed URL and select **Play** from the title screen to capture the mouse.
+Open the printed URL, pick a mode under **Game Modes** (or press Play for the last one
+chosen), and click to capture the mouse.
 
 | Input              | Action              |
 | ------------------ | ------------------- |
@@ -33,7 +42,7 @@ Open the printed URL and select **Play** from the title screen to capture the mo
 | Left Shift         | Sprint              |
 | Esc                | Pause               |
 
-Add `?bot` to the URL to watch the bot play.
+Add `?bot` to the URL to watch the bot play, and `?mode=steel` to open in a specific mode.
 
 ## Commands
 
@@ -67,9 +76,10 @@ Add `?bot` to the URL to watch the bot play.
 
 ```
 src/
-  core/       Game rules: movement, collision, weapon, targets, run stats, bot. Pure and unit tested
+  core/       Game rules: movement, collision, weapons, hostiles, modes, run stats, bot. Pure and unit tested
   core/maps/  Levels, as data
   game/       Browser shell: rendering, input, audio, UI
+  game/hostiles.ts  The instanced hostile figures
   game/ui/         Title, pause, settings, controls, and tactical HUD
   game/materials/  The shared texture library
   game/weapons/    Gun models and the arms that hold them
@@ -83,8 +93,9 @@ AGENTS.md     Rules and architecture for anyone changing the code
 
 The rules in `src/core` know nothing about rendering or the browser. They advance at a
 fixed 60 Hz and the renderer interpolates between steps, so the game behaves the same
-at any frame rate and can be tested without a screen. Lint rules enforce the boundary.
-It is also what will let the same rules run on a server when multiplayer is added.
+at any frame rate and can be tested without a screen. Every random value in a run (shot
+spread, cover choice) comes from a seed carried in the game state, so the same inputs
+always replay the same fight. Lint rules enforce the boundary.
 
 The 3D pistol, arms, world surfaces, and synthesised audio are generated in code at
 start-up, while UI typography is served locally from `public/fonts/` with zero CDN
@@ -103,9 +114,9 @@ enable symlinks in Git (`git config core.symlinks true`) before cloning.
 
 ## Not yet done
 
-- Enemies
 - Real 3D model and texture files in place of the code-built ones
 - Ramps, stairs and rotated walls (collision handles upright boxes only)
+- Squads: hostiles fight individually and do not coordinate with each other
 - Multiplayer
 - The CI workflow file, which is written but has to be added by someone with
   permission to push GitHub workflow files

@@ -13,7 +13,7 @@ model, with `aimDistance` setting how far the sight sits from the eye.
 
 ## Checklist
 
-Run `npm run playtest`. It checks the first five itself and prints them under `checks`.
+Run `npm run playtest`. It checks the first five itself and prints pass/fail for every check in the JSON summary.
 
 1. **Aim reaches fully up.** `state.weapon.aim` is 1 after holding aim for `aimTime`.
 2. **The view zooms.** `zoom()` equals the gun's `aimZoom` when fully aimed.

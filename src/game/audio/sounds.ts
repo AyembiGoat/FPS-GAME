@@ -582,6 +582,120 @@ export function impact(engine: Engine, distance: number, surface: SurfaceMateria
   }
 }
 
+/**
+ * A hostile AK-47 fired somewhere else on the range. It is not the player's own gun: the
+ * crack is dulled by distance, arrives late, and carries the concrete slapback of the yard.
+ */
+export function hostileShot(engine: Engine, distance: number, pan: number) {
+  const at = engine.now() + distance / SPEED_OF_SOUND;
+  const level = falloff(distance) * 1.15;
+  if (level < 0.02) return;
+  engine.noise('world', at, {
+    filter: 'bandpass',
+    from: engine.vary(1450, 0.09),
+    to: 420,
+    q: 0.9,
+    level: 0.62 * level,
+    attack: 0.001,
+    decay: 0.14,
+    pan,
+  });
+  engine.noise('world', at, {
+    filter: 'highpass',
+    from: engine.vary(2200, 0.1),
+    level: 0.34 * level,
+    decay: 0.028,
+    pan,
+  });
+  engine.tone('world', at, {
+    type: 'triangle',
+    from: engine.vary(128, 0.08),
+    to: 42,
+    level: 0.42 * level,
+    decay: 0.13,
+    pan,
+  });
+  engine.noise('world', at + 0.055, {
+    filter: 'bandpass',
+    from: engine.vary(900, 0.14),
+    q: 0.8,
+    level: 0.12 * level,
+    attack: 0.006,
+    decay: 0.22,
+    pan: pan < 0 ? 0.4 : -0.4,
+  });
+}
+
+/** A round striking a vest and body armour: dull plate thump with a short fabric tear. */
+export function hostileHit(engine: Engine, distance: number, pan: number) {
+  const at = engine.now() + distance / SPEED_OF_SOUND;
+  const level = falloff(distance);
+  engine.tone('world', at, {
+    type: 'triangle',
+    from: engine.vary(220, 0.1),
+    to: 92,
+    level: 0.34 * level,
+    decay: 0.075,
+    pan,
+  });
+  engine.noise('world', at, {
+    filter: 'bandpass',
+    from: engine.vary(1300, 0.12),
+    q: 0.7,
+    level: 0.3 * level,
+    decay: 0.05,
+    pan,
+  });
+}
+
+/** A hostile going down: kit rattle and a body hitting the floor. */
+export function hostileDown(engine: Engine, distance: number, pan: number) {
+  const at = engine.now() + distance / SPEED_OF_SOUND;
+  const level = falloff(distance);
+  engine.tone('world', at + 0.06, {
+    type: 'triangle',
+    from: engine.vary(96, 0.12),
+    to: 44,
+    level: 0.36 * level,
+    attack: 0.01,
+    decay: 0.3,
+    pan,
+  });
+  engine.noise('world', at, {
+    filter: 'bandpass',
+    from: engine.vary(1750, 0.16),
+    q: 0.6,
+    level: 0.2 * level,
+    decay: 0.16,
+    pan,
+  });
+  clack(engine, 'world', at + 0.13, { pitch: 640, level: 0.09 * level, length: 0.05, pan });
+}
+
+/**
+ * The player takes a round. Heard from inside the body: a muffled chest thump and the
+ * hard tick of the plate, with no bright transient that would read as a sound effect.
+ */
+export function hitTaken(engine: Engine) {
+  const now = engine.now();
+  engine.tone('handling', now, {
+    type: 'triangle',
+    from: engine.vary(118, 0.06),
+    to: 48,
+    level: 0.5,
+    attack: 0.002,
+    decay: 0.19,
+  });
+  engine.noise('handling', now, {
+    filter: 'lowpass',
+    from: 900,
+    to: 240,
+    level: 0.26,
+    decay: 0.12,
+  });
+  rustle(engine, now + 0.02, 0.1, 0.16);
+}
+
 export function dryFire(engine: Engine) {
   clack(engine, 'handling', engine.now(), { pitch: 3150, level: 0.22, length: 0.018 });
 }

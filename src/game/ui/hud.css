@@ -989,3 +989,87 @@
 .ui-root[data-reduced-motion='true'] .hud-reload-prompt {
   transform: translate(-50%, 0) scale(var(--ui-hud-scale));
 }
+
+/* Vitals: only present in modes where the player can be hurt */
+.hud-vitals {
+  position: fixed;
+  left: var(--ui-safe-x);
+  bottom: calc(var(--ui-safe-y) + 40px);
+  width: 176px;
+  padding: 9px 11px 10px;
+  transform: scale(var(--ui-hud-scale));
+  transform-origin: bottom left;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  transition:
+    border-color var(--ui-dur-fast) var(--ui-ease-out),
+    box-shadow var(--ui-dur-fast) var(--ui-ease-out);
+}
+
+.hud-vitals[hidden] {
+  display: none;
+}
+
+.hud-vitals[data-hit='true'] {
+  border-color: var(--ui-accent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    0 0 18px -6px var(--ui-accent-glow);
+}
+
+.hud-vitals__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.hud-vitals__label {
+  font-family: var(--ui-font-sans);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ui-ink-muted);
+}
+
+.hud-vitals__value {
+  font-family: var(--ui-font-display);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--ui-ink-primary);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.hud-vitals__track {
+  height: 3px;
+  background: rgba(232, 238, 246, 0.12);
+  overflow: hidden;
+}
+
+.hud-vitals__fill {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(90deg, rgba(238, 242, 247, 0.92), #ffffff);
+  transform-origin: left center;
+  transition: transform 120ms linear;
+}
+
+.hud-vitals[data-low='true'] .hud-vitals__fill {
+  background: linear-gradient(90deg, var(--ui-accent), #f2c877);
+}
+
+.hud-vitals[data-low='true'] .hud-vitals__value {
+  color: var(--ui-accent);
+}
+
+.ui-root[data-reduced-motion='true'] .hud-vitals__fill {
+  transition: none;
+}
+
+.hud-feed__item[data-kind='hostile'] .ui-icon {
+  color: var(--ui-accent);
+}

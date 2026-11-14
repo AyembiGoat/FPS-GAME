@@ -3,6 +3,7 @@ import './hud.css';
 import './menus.css';
 
 import type { GameEvent, GameState } from '../../core/game';
+import type { GameModeId, GameModeSpec } from '../../core/mode';
 import type { WeaponId } from '../../core/weapon';
 import type { GameAudio } from '../audio';
 import type { ScopeOverlayState } from '../view';
@@ -11,26 +12,36 @@ import { el } from './dom';
 import { createHudView } from './hudView';
 import type { LoadoutStore } from './loadout';
 import { createLoadoutScreen } from './loadoutScreen';
-import { createIntroScreen, createPauseScreen, createTitleScreen } from './menuScreens';
+import {
+  createIntroScreen,
+  createModesScreen,
+  createPauseScreen,
+  createTitleScreen,
+} from './menuScreens';
 import type { SettingsStore } from './settings';
 import { CROSSHAIR_COLORS, CROSSHAIR_SIZES } from './settings';
 import { createSettingsScreen } from './settingsScreen';
 
-export type ScreenName = 'playing' | 'title' | 'pause' | 'loadout' | 'settings' | 'controls';
+export type ScreenName =
+  'playing' | 'title' | 'modes' | 'pause' | 'loadout' | 'settings' | 'controls';
 
 export interface GameUiOptions {
   readonly mode: 'auto' | 'bot' | 'play';
-  readonly totalTargets: number;
+  /** How many of each thing the map actually has, for the mode cards. */
+  readonly counts: { readonly hostiles: number; readonly plates: number };
   readonly audio: GameAudio;
   readonly settings: SettingsStore;
   readonly loadout: LoadoutStore;
   readonly onRequestPlay: (deployWeaponId?: WeaponId) => void;
   readonly onRestartRun: () => void;
   readonly onQuitToTitle: () => void;
+  /** Start the chosen mode from scratch. */
+  readonly onDeployMode: (mode: GameModeId) => void;
+  readonly currentMode: () => GameModeSpec;
 }
 
 export function createGameUi(options: GameUiOptions) {
-  const { mode, totalTargets, audio, settings, loadout } = options;
+  const { mode, audio, settings, loadout } = options;
 
   const root = el('div', 'ui-root');
   document.body.append(root);
@@ -39,7 +50,7 @@ export function createGameUi(options: GameUiOptions) {
   backdrop.dataset.mode = 'none';
   root.append(backdrop);
 
-  const hud = createHudView(root, totalTargets);
+  const hud = createHudView(root);
 
   let currentScreen: ScreenName = mode === 'play' ? 'title' : 'playing';
   let returnScreen: 'title' | 'pause' = 'title';
@@ -50,6 +61,10 @@ export function createGameUi(options: GameUiOptions) {
       sessionStarted = true;
       setScreen('playing');
       options.onRequestPlay();
+    },
+    onModes: () => {
+      returnScreen = 'title';
+      setScreen('modes');
     },
     onLoadout: () => {
       returnScreen = 'title';
@@ -69,6 +84,10 @@ export function createGameUi(options: GameUiOptions) {
     onResume: () => {
       setScreen('playing');
       options.onRequestPlay();
+    },
+    onModes: () => {
+      returnScreen = 'pause';
+      setScreen('modes');
     },
     onLoadout: () => {
       returnScreen = 'pause';
@@ -96,6 +115,23 @@ export function createGameUi(options: GameUiOptions) {
     },
   });
 
+  const modesScreen = createModesScreen(
+    root,
+    audio,
+    {
+      onDeploy: (modeId) => {
+        sessionStarted = true;
+        hud.clearFeed();
+        options.onDeployMode(modeId);
+        setScreen('playing');
+      },
+      onBack: () => {
+        setScreen(returnScreen);
+      },
+    },
+    options.counts,
+  );
+
   const loadoutScreen = createLoadoutScreen(root, loadout, audio, {
     onBack: () => {
       setScreen(returnScreen);
@@ -117,6 +153,7 @@ export function createGameUi(options: GameUiOptions) {
 
   function applyScreenStates() {
     titleScreen.setActive(currentScreen === 'title');
+    modesScreen.setActive(currentScreen === 'modes');
     pauseScreen.setActive(currentScreen === 'pause');
     loadoutScreen.setActive(currentScreen === 'loadout');
     settingsScreen.setActive(currentScreen === 'settings');
@@ -140,6 +177,7 @@ export function createGameUi(options: GameUiOptions) {
     titleScreen.syncLoadout(current);
     pauseScreen.syncLoadout(current);
   });
+  titleScreen.syncMode(options.currentMode());
 
   settings.subscribe((current) => {
     root.dataset.reducedMotion = current.reducedMotion ? 'true' : 'false';
@@ -160,13 +198,17 @@ export function createGameUi(options: GameUiOptions) {
   if (mode === 'play') {
     titleScreen.setActive(false);
     backdrop.dataset.mode = 'intro';
-    introHandle = createIntroScreen(root, () => {
-      introHandle = null;
-      if (currentScreen === 'title') {
-        backdrop.dataset.mode = 'title';
-        titleScreen.setActive(true);
-      }
-    });
+    introHandle = createIntroScreen(
+      root,
+      () => {
+        introHandle = null;
+        if (currentScreen === 'title') {
+          backdrop.dataset.mode = 'title';
+          titleScreen.setActive(true);
+        }
+      },
+      options.counts,
+    );
   } else {
     applyScreenStates();
   }
@@ -184,6 +226,7 @@ export function createGameUi(options: GameUiOptions) {
       if (next === 'playing') sessionStarted = true;
       if (next === 'title') sessionStarted = false;
       if (next === 'pause' && latestState) pauseScreen.syncTelemetry(latestState);
+      if (next === 'title') titleScreen.syncMode(options.currentMode());
       if (next === 'loadout' || next === 'settings' || next === 'controls') {
         returnScreen = sessionStarted ? 'pause' : 'title';
       }
@@ -211,9 +254,15 @@ export function createGameUi(options: GameUiOptions) {
     },
 
     handleEvents(events: readonly GameEvent[], state: GameState) {
-      const totalDown = state.targetsDown.filter(Boolean).length;
-      const fallenEvents = events.filter((e) => e.type === 'target-down');
-      let runningDown = totalDown - fallenEvents.length;
+      const hostiles = state.mode === 'firefight';
+      const total = hostiles ? state.enemies.length : state.targetsDown.length;
+      const done = hostiles
+        ? state.enemies.filter((enemy) => enemy.behavior === 'dead').length
+        : state.targetsDown.filter(Boolean).length;
+      const fresh = events.filter(
+        (event) => event.type === 'target-down' || event.type === 'enemy-killed',
+      ).length;
+      let running = done - fresh;
 
       for (const event of events) {
         switch (event.type) {
@@ -221,16 +270,22 @@ export function createGameUi(options: GameUiOptions) {
             hud.onShot(event.hit !== null && event.hit.surface !== 'target');
             break;
           case 'target-down':
-            runningDown++;
-            hud.onTargetDown(event.distance, runningDown);
-            if (runningDown === totalTargets) {
-              audio.uiConfirm();
-            }
+            running++;
+            hud.onObjectiveDown(event.distance, running, total, 'target');
+            if (running === total) audio.uiConfirm();
+            break;
+          case 'enemy-killed':
+            running++;
+            hud.onObjectiveDown(event.distance, running, total, 'hostile');
+            if (running === total) audio.uiConfirm();
+            break;
+          case 'player-damaged':
+            hud.onDamage();
             break;
           case 'dry-fire':
             hud.onDryFire();
             break;
-          case 'targets-reset':
+          case 'run-reset':
             hud.clearFeed();
             break;
           default:
