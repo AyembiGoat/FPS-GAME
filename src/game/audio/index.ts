@@ -18,6 +18,8 @@ export interface ReloadBeats {
 export function createAudio() {
   let engine: Engine | null = null;
   let leftFoot = false;
+  let volume = 0.8;
+  let lastHoverAt = 0;
 
   return {
     /** Browsers only allow sound after a click or key press, so call this from one. */
@@ -27,7 +29,13 @@ export function createAudio() {
         return;
       }
       engine = createEngine(new AudioContext());
+      engine.setVolume(volume);
       sounds.wind(engine);
+    },
+
+    setVolume(nextVolume: number) {
+      volume = Math.max(0, Math.min(1, nextVolume));
+      if (engine) engine.setVolume(volume);
     },
 
     shot() {
@@ -59,6 +67,22 @@ export function createAudio() {
     land(speed: number) {
       if (engine) sounds.land(engine, speed);
     },
+    uiHover() {
+      if (!engine) return;
+      const now = engine.now();
+      if (now - lastHoverAt < 0.045) return;
+      lastHoverAt = now;
+      sounds.uiHover(engine);
+    },
+    uiSelect() {
+      if (engine) sounds.uiSelect(engine);
+    },
+    uiBack() {
+      if (engine) sounds.uiBack(engine);
+    },
+    uiConfirm() {
+      if (engine) sounds.uiConfirm(engine);
+    },
   };
 }
 
@@ -89,6 +113,10 @@ const MEASURED: Record<string, (engine: Engine) => void> = {
   plywoodAt10m: (engine) => {
     sounds.impact(engine, 10, 'plywood', 0);
   },
+  uiHover: sounds.uiHover,
+  uiSelect: sounds.uiSelect,
+  uiBack: sounds.uiBack,
+  uiConfirm: sounds.uiConfirm,
 };
 
 /**

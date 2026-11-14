@@ -259,3 +259,79 @@ export function land(engine: Engine, speed: number) {
 export function wind(engine: Engine) {
   engine.bed('ambience', 380, 0.03, 0.09);
 }
+
+/** Subtle damped detent tick when pointer or keyboard focus moves across menu items. */
+export function uiHover(engine: Engine) {
+  const now = engine.now();
+  engine.noise('ui', now, {
+    filter: 'bandpass',
+    from: engine.vary(2050, 0.03),
+    q: 5,
+    level: 0.14,
+    decay: 0.016,
+  });
+  engine.tone('ui', now, {
+    from: 920,
+    to: 720,
+    level: 0.055,
+    decay: 0.016,
+  });
+}
+
+/** Crisp tactile switch click for selecting an option, switching tabs, or stepping a control. */
+export function uiSelect(engine: Engine) {
+  const now = engine.now();
+  engine.noise('ui', now, {
+    filter: 'bandpass',
+    from: engine.vary(2450, 0.03),
+    q: 8,
+    level: 0.14,
+    decay: 0.018,
+  });
+  engine.tone('ui', now + 0.004, {
+    from: 640,
+    to: 520,
+    level: 0.085,
+    decay: 0.032,
+  });
+}
+
+/** Soft descending two-step release when backing out of a menu or closing an overlay. */
+export function uiBack(engine: Engine) {
+  const now = engine.now();
+  engine.noise('ui', now, {
+    filter: 'bandpass',
+    from: 1450,
+    q: 5,
+    level: 0.09,
+    decay: 0.018,
+  });
+  engine.tone('ui', now, {
+    from: 520,
+    to: 340,
+    level: 0.085,
+    decay: 0.05,
+  });
+}
+
+/** Clean two-note confirmation chime when entering play, restarting, or clearing all targets. */
+export function uiConfirm(engine: Engine) {
+  const now = engine.now();
+  engine.noise('ui', now, {
+    filter: 'bandpass',
+    from: 2700,
+    q: 7,
+    level: 0.12,
+    decay: 0.016,
+  });
+  engine.tone('ui', now, {
+    from: 587.33,
+    level: 0.09,
+    decay: 0.075,
+  });
+  engine.tone('ui', now + 0.038, {
+    from: 880,
+    level: 0.105,
+    decay: 0.11,
+  });
+}
