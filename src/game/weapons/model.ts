@@ -1,28 +1,48 @@
 import type * as THREE from 'three';
 
+/** Thickness of one gloved finger, in metres. */
+export const FINGER = 0.017;
+
+/**
+ * A place a hand holds. The fingers are bent round a box of the given size, so they
+ * sit on the surface and never pass through it. Measure the real part.
+ *
+ * The anchor is an empty object at the centre of that box:
+ *   - +Y: up the grip, toward the thumb.
+ *   - +Z: toward the shooter's wrist.
+ *   - The palm is on the hand's own side: +X for the right hand, -X for the left.
+ */
+export interface Handhold {
+  readonly anchor: THREE.Object3D;
+  /** Width (X) and depth (Z) of what the fingers close round, in metres. */
+  readonly size: readonly [number, number];
+  /**
+   * `wrapped`: the thumb crosses behind and lies on the far side, as on a pistol grip.
+   * `alongside`: the thumb lies forward on the palm's side, as on a handguard or when
+   * this hand closes over the other one.
+   */
+  readonly thumb: 'wrapped' | 'alongside';
+}
+
 /**
  * What a gun model must provide so the shared arms, animations and aiming work
  * with it. Build the model in gun space and fill this in; nothing else needs to
  * know the gun's shape. See .agents/skills/weapons/SKILL.md.
  *
  * Gun space: metres, +X to the shooter's right, +Y up, barrel pointing along -Z.
- *
- * Hand anchors are empty objects placed where a hand holds the gun:
- *   - position: the centre of whatever the hand wraps (the middle of the grip).
- *   - +Y: up the grip, toward the thumb.
- *   - +Z: toward the shooter's wrist.
- * The arms module puts a hand at each anchor and solves the elbow itself.
  */
 export interface WeaponModel {
   readonly root: THREE.Group;
 
   /** The firing hand. Always the right hand. */
-  readonly grip: THREE.Object3D;
+  readonly grip: Handhold;
+  /** Where the tip of the trigger finger rests: beside the trigger, on the right. */
+  readonly trigger: THREE.Object3D;
   /** Where the left hand rests when it is not reloading. */
-  readonly support: THREE.Object3D;
+  readonly support: Handhold;
   /**
-   * Where the left hand holds the magazine. Must be a child of `magazine`, so the
-   * hand follows the magazine as it slides out.
+   * Where the left hand holds the magazine, with the same axes as a handhold anchor.
+   * Must be a child of `magazine`, so the hand follows the magazine as it slides out.
    */
   readonly magazineHand: THREE.Object3D;
   /** The removable magazine. During a reload it slides along its own -Y axis. */

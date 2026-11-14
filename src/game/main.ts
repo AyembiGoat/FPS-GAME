@@ -1,12 +1,13 @@
 import { createBot } from '../core/bot';
 import { createFixedLoop, SIM_STEP_SECONDS } from '../core/fixedLoop';
 import type { GameEvent, GameInput, GameState } from '../core/game';
-import { createGame, stepGame } from '../core/game';
+import { createGame, stepGame, WEAPON } from '../core/game';
 import { shootHouse } from '../core/maps/shootHouse';
 import { NO_INPUT } from '../core/player';
 import { createAudio, measureSounds } from './audio';
 import { createHumanInput } from './input';
 import { showMaterials } from './materials/preview';
+import { showWeapon } from './weapons/preview';
 import { createView } from './view';
 
 /**
@@ -14,17 +15,20 @@ import { createView } from './view';
  *   (default)  a person plays with keyboard and mouse.
  *   ?bot       the bot plays in real time, to watch.
  *   ?materials every surface side by side, to check textures. No game.
+ *   ?weapon    the gun and hands from four sides, to check the grip. No game.
  *   ?auto      nothing moves until a script calls window.__fps. Used by
  *              `npm run playtest` so an agent can drive the game and take screenshots.
  */
 const query = new URLSearchParams(window.location.search);
 const mode = query.has('materials')
   ? 'materials'
-  : query.has('auto')
-    ? 'auto'
-    : query.has('bot')
-      ? 'bot'
-      : 'play';
+  : query.has('weapon')
+    ? 'weapon'
+    : query.has('auto')
+      ? 'auto'
+      : query.has('bot')
+        ? 'bot'
+        : 'play';
 
 function play(mode: 'auto' | 'bot' | 'play') {
   const map = shootHouse;
@@ -112,10 +116,11 @@ function play(mode: 'auto' | 'bot' | 'play') {
 }
 
 const overlayElement = document.getElementById('overlay');
-if (mode === 'materials') {
+if (mode === 'materials' || mode === 'weapon') {
   if (overlayElement) overlayElement.hidden = true;
   for (const element of document.querySelectorAll<HTMLElement>('.hud')) element.hidden = true;
-  showMaterials();
+  if (mode === 'materials') showMaterials();
+  else showWeapon(WEAPON);
 } else {
   play(mode);
 }

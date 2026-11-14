@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { applySurface, surface, surfaceMesh } from '../materials';
 import type { WeaponModel } from './model';
+import { FINGER } from './model';
 
 /**
  * M1911 pistol, built from reference/m1911.png (side) and reference/m1911-rear.png
@@ -109,6 +110,8 @@ function anchor(
 
 /** The grip leans back toward the shooter as it goes down. */
 const GRIP_RAKE = -0.26;
+/** Width across the grip panels, and depth from front strap to back strap. */
+const GRIP_SIZE = [0.029, 0.054] as const;
 
 export function buildM1911(): WeaponModel {
   const steel = surface('gun-steel');
@@ -180,11 +183,19 @@ export function buildM1911(): WeaponModel {
   magazine.add(box(darkSteel, [0.017, 0.005, 0.04], [0, -0.0475, 0]));
   root.add(magazine);
 
+  const grip = anchor(root, [0, -0.068, 0.0635], [GRIP_RAKE, 0, 0]);
+
   return {
     root,
-    grip: anchor(root, [0, -0.066, 0.066], [GRIP_RAKE, 0, 0]),
-    // Wrapped over the firing hand from the left, a little lower and further forward.
-    support: anchor(root, [-0.026, -0.08, 0.05], [GRIP_RAKE + 0.22, 0.18, 0]),
+    grip: { anchor: grip, size: GRIP_SIZE, thumb: 'wrapped' },
+    trigger: anchor(root, [0.0125, -0.027, -0.006]),
+    // The left hand closes over the firing hand's fingers, one finger lower, so the box
+    // it holds is the grip plus a finger's thickness on the front and on each side.
+    support: {
+      anchor: anchor(grip, [0, -0.0185, -FINGER / 2 - 0.002], [0, 0.1, 0]),
+      size: [GRIP_SIZE[0] + FINGER * 2 + 0.008, GRIP_SIZE[1] + FINGER + 0.004],
+      thumb: 'alongside',
+    },
     // Holding the lower half of the magazine, wrist coming up from below.
     magazineHand: anchor(magazine, [0, -0.03, 0.004], [0.75, 0.2, 0]),
     magazine,
@@ -196,7 +207,7 @@ export function buildM1911(): WeaponModel {
     sight: anchor(root, [0, SLIDE_HEIGHT + 0.0047, 0.076]),
     aimDistance: 0.42,
     hip: {
-      position: new THREE.Vector3(0.085, -0.07, -0.56),
+      position: new THREE.Vector3(0.09, -0.088, -0.54),
       rotation: new THREE.Euler(0, 0.035, 0),
     },
     reload: { magazineOut: 0.16, magazineIn: 0.6, slideRelease: 0.84 },

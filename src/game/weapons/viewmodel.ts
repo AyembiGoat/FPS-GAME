@@ -55,7 +55,7 @@ export function createViewmodel(model: WeaponModel, environment: THREE.Texture |
   scene.add(sun, sun.target);
 
   const root = model.root;
-  const arms = createArms();
+  const arms = createArms(model);
   scene.add(root, arms.group);
 
   const flash = new THREE.Mesh(
@@ -245,12 +245,12 @@ export function createViewmodel(model: WeaponModel, environment: THREE.Texture |
       root.updateMatrixWorld(true);
 
       // Hands go wherever the gun says they belong.
-      model.grip.getWorldPosition(position);
-      model.grip.getWorldQuaternion(rotation);
+      model.grip.anchor.getWorldPosition(position);
+      model.grip.anchor.getWorldQuaternion(rotation);
       arms.right.place(position, rotation);
 
-      model.support.getWorldPosition(position);
-      model.support.getWorldQuaternion(rotation);
+      model.support.anchor.getWorldPosition(position);
+      model.support.anchor.getWorldQuaternion(rotation);
       model.magazineHand.getWorldPosition(otherPosition);
       model.magazineHand.getWorldQuaternion(otherRotation);
       position.lerp(otherPosition, toMagazine);

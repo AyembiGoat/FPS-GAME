@@ -87,7 +87,7 @@ export async function launchGame({ width = 1280, height = 720, mode = 'auto' } =
   await page.goto(`http://127.0.0.1:${address.port}/?${mode}`, { waitUntil: 'load' });
   if (mode === 'auto')
     await page.waitForFunction(() => window.__fps !== undefined, { timeout: 60000 });
-  if (mode === 'materials')
+  if (mode === 'materials' || mode === 'weapon')
     await page.waitForFunction(() => document.body.dataset.ready === 'true', { timeout: 60000 });
 
   return {

@@ -29,21 +29,31 @@ shared (`viewmodel.ts`, `arms.ts`). A new gun gets all of them by filling in its
 
 ## Where the hands go
 
-Each hand is placed on an anchor: an empty object you position on the gun. The arm
-then reaches it on its own. An anchor means:
+Each hand closes round a **handhold** you describe on the gun: an anchor, the size of
+the part being held, and where the thumb goes. The fingers are bent round a box of
+that size, a millimetre off its surface, so they cannot pass through it. The arm then
+reaches the hand on its own.
 
-- **position**: the centre of whatever the hand is wrapped round.
+The anchor is an empty object at the centre of the part being held:
+
 - **+Y**: up the grip, toward the thumb.
 - **+Z**: toward the wrist, the way the forearm leaves the hand.
+- The palm lies on the hand's own side: +X for the right hand, -X for the left.
 
-| Anchor         | Hand  | Put it                                                                                  |
-| -------------- | ----- | --------------------------------------------------------------------------------------- |
-| `grip`         | right | Middle of the pistol grip, tilted to match the grip's rake                              |
-| `support`      | left  | Where the left hand rests: over the right hand on a pistol, on the handguard of a rifle |
-| `magazineHand` | left  | On the magazine, as a **child of the magazine**, so the hand follows it out             |
+`size` is the width (X) and depth (Z) of the part, in metres. Measure the model. If
+fingers sink into the gun, the size is too small; if they float, it is too large.
 
-For a rifle, `support` sits under the handguard: +Y pointing up through the handguard,
-+Z pointing back and down toward the shooter's left elbow.
+| Field          | Hand  | Put it                                                                      |
+| -------------- | ----- | --------------------------------------------------------------------------- |
+| `grip`         | right | Centre of the pistol grip, tilted to the grip's rake. Thumb `wrapped`       |
+| `trigger`      | right | Where the tip of the index finger rests, beside the trigger                 |
+| `support`      | left  | Where the left hand rests. Thumb `alongside`                                |
+| `magazineHand` | left  | On the magazine, as a **child of the magazine**, so the hand follows it out |
+
+On a pistol the left hand closes over the right hand's fingers, so its handhold is the
+grip plus one finger's thickness (`FINGER`) on the front and each side, one finger
+lower. `m1911.ts` shows the sums. On a rifle, `support` is the handguard: +Y up through
+it, +Z back toward the shooter's left elbow, size the handguard's width and height.
 
 The other anchors: `muzzle` (barrel tip), `ejection` (+X is where cases fly), `sight`
 (see `aiming-and-scopes`), plus `magazine`, `magazineTravel`, `slide`, `slideTravel`.
@@ -52,7 +62,11 @@ animation and the sounds both read it, so they stay together.
 
 ## Checking it looks held
 
-Run `npm run playtest` and open these in `playtest/`:
+First run `npm run playtest -- --weapon` and open `playtest/weapon.png`: the gun and
+hands from the left, right, front and above. Fingers lie on the surface, none pass
+through the gun or the other hand, and the trigger finger reaches the trigger.
+
+Then run `npm run playtest` and open these in `playtest/`:
 
 - `01-spawn.png`: both hands are closed round the gun, not floating beside it or
   buried in it. No finger passes through the slide or barrel. Both forearms run off
@@ -62,4 +76,5 @@ Run `npm run playtest` and open these in `playtest/`:
 - `07-aiming.png`: the hands do not cover the sights or the target.
 - `09-lean-left.png`, `10-lean-right.png`: the gun and arms stay attached to the view.
 
-If a hand is wrong, move or rotate the anchor. Do not change `arms.ts` to suit one gun.
+If a hand is wrong, fix the handhold: move or rotate the anchor, or correct the size.
+Do not change `arms.ts` to suit one gun.

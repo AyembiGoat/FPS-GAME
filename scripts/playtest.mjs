@@ -3,6 +3,7 @@
 //   npm run playtest                  every feature, then the bot clears the map
 //   npm run playtest -- --quick       spawn screenshot only
 //   npm run playtest -- --materials   every texture side by side, nothing else
+//   npm run playtest -- --weapon      the gun and hands from four sides, nothing else
 //   npm run playtest -- --keep before copy the screenshots to playtest/before/ afterwards,
 //                                     to compare against after a change
 //
@@ -20,9 +21,10 @@ const check = (name, passed) => {
   summary.checks[name] = passed;
 };
 
-if (args.includes('--materials')) {
-  const page = await launchGame({ mode: 'materials' });
-  await page.screenshot('playtest/materials.png');
+const preview = ['materials', 'weapon'].find((name) => args.includes(`--${name}`));
+if (preview) {
+  const page = await launchGame({ mode: preview });
+  await page.screenshot(`playtest/${preview}.png`);
   summary.errors = page.errors;
   await page.close();
 } else {
