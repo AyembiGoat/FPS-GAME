@@ -5,7 +5,7 @@ import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
 export default defineConfig(
-  { ignores: ['dist', 'coverage', 'node_modules'] },
+  { ignores: ['dist', 'coverage', 'node_modules', 'playtest'] },
   js.configs.recommended,
   tseslint.configs.strictTypeChecked,
   {
@@ -48,6 +48,12 @@ export default defineConfig(
         { object: 'Date', property: 'now', message: 'Core takes dt as input; no wall clock.' },
       ],
     },
+  },
+  {
+    // Node scripts are plain JavaScript outside the TypeScript project.
+    files: ['scripts/**/*.mjs'],
+    extends: [tseslint.configs.disableTypeChecked],
+    languageOptions: { globals: { ...globals.node, ...globals.browser } },
   },
   prettier,
 );

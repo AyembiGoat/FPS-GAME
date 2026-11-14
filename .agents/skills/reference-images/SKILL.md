@@ -59,7 +59,8 @@ and say which one produced the image.
 - It has text, logos, watermarks, borders or a busy background.
 - Detail is smeared, melted or noise that only looks like detail.
 - Parts are duplicated, fused or missing, or the perspective is inconsistent.
-- It copies a recognisable design from an existing game, film or real brand.
+- It copies a recognisable design from another game or a film. Real-world objects,
+  including real firearms, are what references should show.
 - It is a dramatic "concept art" shot that looks good but cannot be modelled from.
 
 ## Building from it

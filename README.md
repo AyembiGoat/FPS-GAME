@@ -2,10 +2,9 @@
 
 A first-person shooter that runs in the browser, built with TypeScript and Three.js.
 
-**Status: baseline.** You can walk, sprint and jump around a placeholder scene. There
-are no weapons, enemies, collision, maps or art yet. What is in place is the project
-structure, the tooling, and the guidance that lets people and AI agents build on it
-and check their work.
+**Status: first playable slice.** One small map, Shoot House, with walls you cannot
+walk through, an M1911 pistol, and eight steel targets that fall when hit and stand
+back up once all are down. Single-player. There are no enemies yet.
 
 ## Quick start
 
@@ -18,54 +17,66 @@ npm run dev
 
 Open the printed URL and click to capture the mouse.
 
-| Input | Action  |
-| ----- | ------- |
-| WASD  | Move    |
-| Mouse | Look    |
-| Space | Jump    |
-| Shift | Sprint  |
-| Esc   | Release |
+| Input      | Action |
+| ---------- | ------ |
+| W A S D    | Move   |
+| Mouse      | Look   |
+| Left click | Fire   |
+| R          | Reload |
+| Space      | Jump   |
+| Left Shift | Sprint |
+| Esc        | Pause  |
+
+Add `?bot` to the URL to watch the bot play.
 
 ## Commands
 
-| Command             | What it does                                         |
-| ------------------- | ---------------------------------------------------- |
-| `npm run dev`       | Start the dev server with hot reload                 |
-| `npm run check`     | Typecheck, lint, format check, test and build        |
-| `npm run typecheck` | TypeScript in strict mode                            |
-| `npm run lint`      | ESLint with type-aware rules and architecture checks |
-| `npm run format`    | Format everything with Prettier                      |
-| `npm run test`      | Run unit tests once (`test:watch` to keep running)   |
-| `npm run build`     | Production build into `dist/`                        |
+| Command             | What it does                                                            |
+| ------------------- | ----------------------------------------------------------------------- |
+| `npm run dev`       | Start the dev server with hot reload                                    |
+| `npm run check`     | Typecheck, lint, format check, test and build                           |
+| `npm run typecheck` | TypeScript in strict mode                                               |
+| `npm run lint`      | ESLint with type-aware rules and architecture checks                    |
+| `npm run format`    | Format everything with Prettier                                         |
+| `npm run test`      | Run unit tests once (`test:watch` to keep running)                      |
+| `npm run build`     | Production build into `dist/`                                           |
+| `npm run playtest`  | Play the game in a headless browser and save screenshots to `playtest/` |
 
 `npm run check` is the gate. CI runs the same steps on every pull request
 (`.github/workflows/ci.yml`).
 
 ## Stack
 
-| Purpose       | Library                       |
-| ------------- | ----------------------------- |
-| Language      | TypeScript (strict)           |
-| Rendering     | Three.js                      |
-| Dev and build | Vite                          |
-| Tests         | Vitest                        |
-| Lint          | ESLint with typescript-eslint |
-| Format        | Prettier                      |
+| Purpose       | Library                           |
+| ------------- | --------------------------------- |
+| Language      | TypeScript (strict)               |
+| Rendering     | Three.js                          |
+| Dev and build | Vite                              |
+| Tests         | Vitest                            |
+| Lint          | ESLint with typescript-eslint     |
+| Format        | Prettier                          |
+| Playtest      | Puppeteer with a bundled Chromium |
 
 ## Structure
 
 ```
 src/
-  core/     Deterministic simulation: pure TypeScript, unit tested
-  game/     Browser shell: rendering, input
-.agents/    Playbooks (skills) for AI agents, indexed in skills.md
-AGENTS.md   Rules and architecture for anyone changing the code
+  core/       Game rules: movement, collision, weapon, targets, bot. Pure and unit tested
+  core/maps/  Levels, as data
+  game/       Browser shell: rendering, sound, input, HUD
+scripts/      Headless-browser playtest
+reference/    The reference images the visuals were built from
+.agents/      Playbooks (skills) for AI agents, indexed in skills.md
+AGENTS.md     Rules and architecture for anyone changing the code
 ```
 
-The simulation in `src/core` knows nothing about rendering or the browser. It advances
-at a fixed 60 Hz and the renderer interpolates between steps, so gameplay behaves the
-same at any frame rate and can be tested without a GPU. Lint rules enforce the
-boundary.
+The rules in `src/core` know nothing about rendering or the browser. They advance at a
+fixed 60 Hz and the renderer interpolates between steps, so the game behaves the same
+at any frame rate and can be tested without a screen. Lint rules enforce the boundary.
+It is also what will let the same rules run on a server when multiplayer is added.
+
+Everything on screen is generated at start-up: the pistol is built in code, textures
+are drawn to canvases and sounds are synthesised. There are no asset files yet.
 
 ## Working with AI agents
 
@@ -78,10 +89,12 @@ this project. Five are vendored: two from Anthropic's skills repository and thre
 Theo Browne's tstack. `.claude/skills` is a symbolic link to that folder; on Windows,
 enable symlinks in Git (`git config core.symlinks true`) before cloning.
 
-## Not yet decided
+## Not yet done
 
-- Collision and physics (hand-written or a library such as Rapier)
-- Map format and editing workflow
-- Art direction (agents use plain placeholders until it is chosen) and asset pipeline
-- Single-player, multiplayer or both
-- Automated browser and visual testing
+- Enemies
+- Hands and arms on the weapon; the pistol currently floats
+- Real 3D model and texture files in place of the code-built ones
+- Ramps, stairs and rotated walls (collision handles upright boxes only)
+- Multiplayer
+- The CI workflow file, which is written but has to be added by someone with
+  permission to push GitHub workflow files

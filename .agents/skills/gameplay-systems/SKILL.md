@@ -18,10 +18,14 @@ Ask: "would a headless server need this to decide who won?" If yes, it is core.
 
 ## Shape of a system
 
-Follow `src/core/player.ts`:
+Follow `src/core/weapon.ts`, and see `src/core/game.ts` for how systems are combined:
 
 ```ts
-export function stepThing(state: ThingState, input: ThingInput, dt: number): ThingState;
+export function stepThing(
+  state: ThingState,
+  input: ThingInput,
+  dt: number,
+): { state: ThingState; events: ThingEvent[] };
 ```
 
 - State and input are plain readonly data. Return new state; do not mutate.
@@ -42,8 +46,11 @@ Good FPS feel is mostly low latency and consistency:
 
 - Look input is applied to the camera immediately, not delayed to the next step.
 - Movement speed is identical in every direction and at every frame rate.
-- Inputs pressed slightly early should still count (jump buffering, coyote time) once
-  those systems exist. Implement them as timers in core state so they are testable.
+- Inputs pressed slightly early or late still count. Jumping already does this (a
+  press just before landing or just after leaving a ledge works); keep that standard
+  for new actions, as timers in core state so they are testable.
+- A key press shorter than one simulation step must not be lost. `src/game/input.ts`
+  latches presses until the next step reads them.
 - Change one tuning value at a time and record the old and new values.
 
 ## Checklist

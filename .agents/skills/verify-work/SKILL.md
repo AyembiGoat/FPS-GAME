@@ -52,7 +52,37 @@ All five steps must pass. While iterating, run the single relevant step:
 ## Looking at it
 
 The checks prove the simulation is correct and the project builds. They do not prove
-the game looks or feels right. For visual or feel changes, use the `webapp-testing`
-skill to run the dev server in a real browser, take a screenshot and read the console.
-Pointer lock does not work in a headless browser, so mouse look cannot be driven that
-way. If you could not see it running, say that instead of implying it was verified.
+the game looks right. For that, play it:
+
+```
+npm run playtest            # walk, shoot, reload, then the bot clears the map
+npm run playtest -- --quick # one screenshot of the spawn
+```
+
+This opens the game in a headless browser, plays it, and writes screenshots to
+`playtest/` (not committed). It fails if the page logs an error or the bot cannot
+knock down every target. Then open the screenshots and look at them. A passing run
+with an ugly screenshot is a failed check.
+
+How it works:
+
+- `src/core/bot.ts` is a scripted player. It reads the game state and returns the
+  same inputs a person gives: move, look, fire, reload. It finds its way with the
+  map's own collision boxes. A unit test also runs it without a browser, so
+  `npm run check` fails if a change makes the map impossible to finish.
+- Opening the game with `?auto` stops the clock. Nothing moves until a script calls
+  `window.__fps.step(input, steps)` or `window.__fps.bot(steps)`; `state()` returns
+  the full game state. Opening it with `?bot` lets the bot play in real time.
+- `scripts/browser.mjs` exports `launchGame()`, which returns `step`, `bot`, `state`
+  and `screenshot`. To check something specific, copy `scripts/playtest.mjs` and
+  drive the player to the spot you need.
+
+To look at one place: `step({ yawDelta: 1.2 })` turns, `step({ forward: 1 }, 60)`
+walks for a second, then `screenshot('playtest/name.png')`.
+
+On Linux the browser comes from the `@sparticuz/chromium` package, so `npm install`
+is all it needs. On macOS or Windows set `CHROME_PATH` to an installed Chrome.
+Rendering is done in software, so a run takes about a minute.
+
+What it cannot tell you: how sound comes across, and how the controls feel in the
+hand. Say so when your change touches either.

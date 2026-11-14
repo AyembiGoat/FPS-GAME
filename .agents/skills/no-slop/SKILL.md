@@ -53,8 +53,9 @@ the enemy on screen. Fewer, flatter and smaller wins.
 - Controls that do nothing: menu entries, settings, buttons or stats with no system
   behind them. If it is on screen, it works.
 - Fake numbers: ammo counts, scores or progress bars not driven by real state.
-- Names from the top of the pile: "Plasma Rifle", "Neon Arena", "Sector 7", "Shadow
-  Ops". Ask the owner or leave a plain working name such as `rifle-01`.
+- Invented names: "Apex Gun", "Plasma Rifle", "Viper X", "Neon Arena", "Sector 7",
+  "Shadow Ops". Use the name the thing normally has: M1911, AK-47, Shoot House,
+  Warehouse. If there is no normal name, describe it plainly and ask the owner.
 - Invented lore, taglines, loading tips and flavour text nobody asked for.
 - Many shallow variants (ten guns that differ by one number) instead of one that feels
   right.

@@ -1,9 +1,13 @@
 # FPS Game
 
 A first-person shooter that runs in the browser. TypeScript, Three.js for rendering,
-Vite for dev and build, Vitest for tests. The repo is at baseline: a walkable
-placeholder scene and the tooling to verify changes. There are no weapons, enemies,
-collision, maps or art yet.
+Vite for dev and build, Vitest for tests. So far there is one small map (Shoot House),
+one weapon (the M1911 pistol) and steel targets to shoot. There are no enemies yet.
+
+Single-player for now. Multiplayer is planned for later, which is why the game rules
+are kept in `src/core` with no browser code: that part can later run on a server
+unchanged. Do not add anything to `src/core` that assumes there is only one player
+beyond what is already there, and do not build networking until the owner asks.
 
 This file is the entry point for every AI agent working here. Task playbooks are in
 [`.agents/skills/`](skills.md).
@@ -80,23 +84,34 @@ version:
   ornaments that carry no information. No emoji as icons. An effect has to tell the
   player something.
 - **Game.** No button, stat, menu entry or setting that is not wired to something
-  real. No generic names or lore filler. No effect stack (shake, flare, vignette,
+  real. No invented names (see [Names](#names)) or lore filler. No effect stack (shake, flare, vignette,
   chromatic aberration) added to make a moment feel bigger.
 - **Code.** No comments that narrate the code. No abstractions, options or fallbacks
   for cases that do not exist. No swallowed errors. No leftover logs, TODOs or dead
   code. No file or symbol named `new`, `v2`, `enhanced` or `improved`.
 - **Words.** No hype, no exclamation marks, no filler, in the game or in the repo.
 
-### Art direction: not decided
+### Names
 
-The look of the game has not been chosen. Until the owner chooses it and it is written
-in this section:
+Call things what they are normally called. A real weapon keeps its real name: M1911,
+AK-47, MP5, Remington 870. A place is named for what it is: Shoot House, Warehouse,
+Train Yard. Never invent a brand-sounding name such as "Apex Gun", "Viper X" or "Neon
+Arena". If a thing has no established name, use a plain description and ask the owner.
+The same goes for code: `pistol`, `wall`, `target`, not `armament` or `entity manager`.
 
-- Do not invent a style. UI is plain: system font, white text, no decoration. Geometry
-  is untextured grey-box. The current scene is a placeholder, not a reference.
-- Do not add final art, colour palettes, fonts, HUD styling or post-processing.
-- If a task needs a visual decision, ask the owner. When the direction is being
-  chosen, use the `frontend-design` skill to propose it.
+### Art direction: grounded and plain
+
+This is the working direction, chosen by an agent while building the first slice. The
+owner can change it at any time; nobody else should.
+
+- The world looks like a real place in natural daylight: concrete, plywood, steel,
+  wood. Colour comes from materials and the sun, not from coloured lights.
+- Weapons are real firearms, modelled to their real dimensions.
+- The HUD is plain white text in the system font with a soft shadow for legibility.
+  No panels, frames or icons. It shows only what the player needs mid-fight.
+- Effects are brief and physical: a muzzle flash, an ejected case, dust and a hole
+  where a round lands. Nothing lingers and nothing glows.
+- Sound follows physics where it is cheap to: distant hits arrive late.
 
 ## Reference images
 
@@ -120,6 +135,13 @@ src/
   call `Math.random`. It takes state, input and `dt`, and returns new state. ESLint
   enforces this. It is what makes gameplay unit-testable, replayable and later runnable
   on a server.
+- **A map is data.** `src/core/map.ts` describes a level as boxes, a spawn and
+  targets. Collision and rendering are both built from that one description. All
+  solid geometry is axis-aligned boxes; that is why collision is 150 lines of our own
+  code and not a physics library. Revisit that when a map needs ramps or rotated
+  walls.
+- **Core returns events.** A step returns the new state plus what happened (shot,
+  target down, landed). `src/game` turns events into sound and effects.
 - **`src/game` depends on `core`, never the reverse.** It samples input, steps the
   simulation at a fixed 60 Hz, and draws the result.
 - **Units:** metres, seconds, radians. Right-handed, Y up. Yaw 0 looks down -Z.
@@ -152,11 +174,15 @@ src/
   before and after capture, not a test.
 - A test that needs a sleep, a retry or a timeout to pass is wrong. Core takes `dt`,
   so nothing needs to wait on real time.
-- The checks cannot see the screen. For anything visual or feel-related, run the game
-  in a real browser with the `webapp-testing` skill. If you cannot, tell the owner you
-  have not seen it running.
-
-More detail: [`verify-work`](.agents/skills/verify-work/SKILL.md).
+- The checks cannot see the screen. For anything the player sees, run
+  `npm run playtest`. It plays the game in a real browser, with a bot that uses the
+  same controls as a person, and saves screenshots to `playtest/`. Open the
+  screenshots and look at them. See [`verify-work`](.agents/skills/verify-work/SKILL.md)
+  for writing your own scenario.
+- Neither tool can judge sound or how the controls feel in the hand. Tell the owner
+  that those need a person.
+- When a feature is finished, start the dev server (`npm run dev`) so the owner can
+  play it, and tell them it is ready.
 
 ## Pull requests
 

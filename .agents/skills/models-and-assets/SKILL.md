@@ -5,7 +5,10 @@ description: How to add 3D models, textures, animations and audio, including for
 
 # Models and assets
 
-No assets are in the repo yet. These are the rules for the first ones.
+The first slice has no asset files: the M1911 is built in code in
+`src/game/viewmodel.ts` and surface textures are drawn in `src/game/textures.ts`. That
+keeps the slice self-contained, but code-built models are blocky. These are the rules
+for real asset files when they arrive.
 
 Start every asset from a reference image, following the `reference-images` skill.
 
