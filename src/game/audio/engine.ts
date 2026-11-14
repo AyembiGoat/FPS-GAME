@@ -1,27 +1,26 @@
 /**
- * The mixing desk. Every sound is built from two ingredients, filtered noise and
- * decaying sine tones, and is sent to one of four buses. Each bus has its own
- * volume and its own share of the outdoor echo, so the balance between kinds of
- * sound is set in one place (BUSES) and not by each sound guessing a number.
+ * The mixing desk. Every sound is built from filtered noise and pitched transients,
+ * routed into five buses with calibrated levels and outdoor concrete Shoot House
+ * stereo early reflections + tail reverb. The `weapon` bus runs through a subtle
+ * soft-clipping harmonic saturator so muzzle blasts carry genuine punch without clipping.
  *
- * It runs on any audio context, including an offline one, which is how
- * `measureSounds` checks loudness without speakers.
+ * Runs on any AudioContext or OfflineAudioContext (used by `measureSounds()`).
  */
 
 export type Bus = 'weapon' | 'handling' | 'world' | 'ambience' | 'ui';
 
-/** `level` is the bus volume. `echo` is how much of it reaches the outdoor echo. */
+/** `level` is the bus volume. `echo` is how much of it reaches the outdoor shoot-house reverb. */
 const BUSES: Record<Bus, { level: number; echo: number }> = {
-  weapon: { level: 0.6, echo: 0.3 },
-  // Reloading, dry fire, cloth: things heard at arm's length. Deliberately quiet.
-  handling: { level: 0.3, echo: 0.03 },
-  world: { level: 0.6, echo: 0.35 },
+  weapon: { level: 0.44, echo: 0.34 },
+  // Reloading, dry fire, turret clicks, cloth: arm's-length handling stays well below gunfire.
+  handling: { level: 0.34, echo: 0.04 },
+  world: { level: 0.62, echo: 0.38 },
   ambience: { level: 1, echo: 0 },
-  ui: { level: 0.24, echo: 0 },
+  ui: { level: 0.32, echo: 0 },
 };
 
-const MASTER_LEVEL = 0.7;
-const ECHO_SECONDS = 1.4;
+const MASTER_LEVEL = 0.72;
+const ECHO_SECONDS = 1.55;
 
 export interface NoiseShape {
   readonly filter: BiquadFilterType;
@@ -41,59 +40,119 @@ export interface ToneShape {
   readonly to?: number;
   readonly level: number;
   readonly decay: number;
+  readonly attack?: number;
+  readonly type?: OscillatorType;
   readonly pan?: number;
+}
+
+/** Unity-gain warm soft-clip transfer curve (`tanh(x*drive)/drive`) adding punch without boosting bus level. */
+function makeSaturatorCurve(drive: number): Float32Array<ArrayBuffer> {
+  const samples = 2048;
+  const curve = new Float32Array(new ArrayBuffer(samples * 4));
+  for (let i = 0; i < samples; i++) {
+    const x = (i * 2) / samples - 1;
+    curve[i] = Math.tanh(x * drive) / drive;
+  }
+  return curve;
+}
+
+/** Deterministic pseudo-random for reproducible stereo reverb IRs across runs. */
+function mulberry32(seed: number) {
+  let a = seed >>> 0;
+  return () => {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }
 
 export function createEngine(context: BaseAudioContext) {
   const master = context.createGain();
   master.gain.value = MASTER_LEVEL;
-  // Catches the peak of a gunshot so it is loud without clipping.
+
+  // Transparent bus limiter catching peaks cleanly without pumping.
   const limiter = context.createDynamicsCompressor();
-  limiter.threshold.value = -4;
+  limiter.threshold.value = -4.5;
   limiter.knee.value = 6;
-  limiter.ratio.value = 8;
-  limiter.attack.value = 0.002;
-  limiter.release.value = 0.12;
+  limiter.ratio.value = 9;
+  limiter.attack.value = 0.0015;
+  limiter.release.value = 0.11;
   limiter.connect(master).connect(context.destination);
 
-  // Two seconds of noise, shared by every sound and read from a random point.
+  // Two seconds of white noise, shared by every sound and read from a random offset.
   const noiseBuffer = context.createBuffer(1, context.sampleRate * 2, context.sampleRate);
   const noiseData = noiseBuffer.getChannelData(0);
   for (let i = 0; i < noiseData.length; i++) noiseData[i] = Math.random() * 2 - 1;
 
-  // The echo of an open yard with a wall round it: noise that fades and dulls.
-  const echoBuffer = context.createBuffer(
-    2,
-    Math.floor(context.sampleRate * ECHO_SECONDS),
-    context.sampleRate,
-  );
+  // Open-air concrete Shoot House impulse response: discrete stereo concrete wall early
+  // reflections (18–92 ms) feeding into a darkening desert canyon outdoor tail.
+  const irLen = Math.floor(context.sampleRate * ECHO_SECONDS);
+  const echoBuffer = context.createBuffer(2, irLen, context.sampleRate);
+  const earlyTaps: readonly (readonly [number, number, number])[] = [
+    // [timeSec, leftGain, rightGain]
+    [0.019, 0.58, 0.22],
+    [0.027, 0.24, 0.54],
+    [0.044, 0.44, 0.36],
+    [0.063, 0.28, 0.46],
+    [0.088, 0.34, 0.26],
+  ];
+
   for (let channel = 0; channel < 2; channel++) {
     const data = echoBuffer.getChannelData(channel);
+    const rand = mulberry32(channel === 0 ? 41983 : 98217);
     let smooth = 0;
     for (let i = 0; i < data.length; i++) {
       const t = i / data.length;
-      // Later echoes have lost more of their treble.
-      const keep = 0.5 - t * 0.42;
-      smooth += (Math.random() * 2 - 1 - smooth) * keep;
-      // Nothing for the first few milliseconds: the nearest wall is metres away.
-      data[i] = i < context.sampleRate * 0.03 ? 0 : smooth * (1 - t) ** 2.4;
+      const keep = 0.46 - t * 0.4;
+      smooth += (rand() * 2 - 1 - smooth) * keep;
+      const tail = i < context.sampleRate * 0.024 ? 0 : smooth * (1 - t) ** 2.35;
+      data[i] = tail * 0.72;
+    }
+    // Stamp crisp early concrete wall slapback reflections!
+    for (const [sec, lGain, rGain] of earlyTaps) {
+      const idx = Math.floor(sec * context.sampleRate);
+      const gain = channel === 0 ? lGain : rGain;
+      for (let k = 0; k < 26 && idx + k < data.length; k++) {
+        const env = Math.exp(-k / 6.5);
+        data[idx + k] = (data[idx + k] ?? 0) + (rand() * 2 - 1) * gain * env * 0.48;
+      }
     }
   }
+
   const echo = context.createConvolver();
   echo.buffer = echoBuffer;
+  const echoFilter = context.createBiquadFilter();
+  echoFilter.type = 'lowpass';
+  echoFilter.frequency.value = 4600;
   const echoLevel = context.createGain();
-  echoLevel.gain.value = 0.5;
-  echo.connect(echoLevel).connect(limiter);
+  echoLevel.gain.value = 0.52;
+  echo.connect(echoFilter).connect(echoLevel).connect(limiter);
+
+  // Subtle warm unity-gain soft-clipper dedicated to the weapon bus for tactile transient snap.
+  const weaponDrive = context.createWaveShaper();
+  weaponDrive.curve = makeSaturatorCurve(1.65);
+  weaponDrive.oversample = '2x';
 
   const inputs = {} as Record<Bus, GainNode>;
   for (const name of Object.keys(BUSES) as Bus[]) {
     const input = context.createGain();
     input.gain.value = BUSES[name].level;
-    input.connect(limiter);
-    if (BUSES[name].echo > 0) {
+
+    if (name === 'weapon') {
+      input.connect(weaponDrive);
+      weaponDrive.connect(limiter);
       const send = context.createGain();
       send.gain.value = BUSES[name].echo;
-      input.connect(send).connect(echo);
+      weaponDrive.connect(send).connect(echo);
+    } else {
+      input.connect(limiter);
+      if (BUSES[name].echo > 0) {
+        const send = context.createGain();
+        send.gain.value = BUSES[name].echo;
+        input.connect(send).connect(echo);
+      }
     }
     inputs[name] = input;
   }
@@ -132,26 +191,29 @@ export function createEngine(context: BaseAudioContext) {
       filter.frequency.setValueAtTime(shape.from, at);
       if (shape.to) filter.frequency.exponentialRampToValueAtTime(shape.to, at + shape.decay);
       const gain = context.createGain();
+      const atk = shape.attack ?? 0.001;
       gain.gain.setValueAtTime(0.0001, at);
-      gain.gain.exponentialRampToValueAtTime(shape.level, at + (shape.attack ?? 0.001));
-      gain.gain.exponentialRampToValueAtTime(0.0001, at + (shape.attack ?? 0.001) + shape.decay);
+      gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, shape.level), at + atk);
+      gain.gain.exponentialRampToValueAtTime(0.0001, at + atk + shape.decay);
       source.connect(filter).connect(gain).connect(output(bus, shape.pan));
       source.start(at, Math.random() * 1.5);
-      source.stop(at + (shape.attack ?? 0.001) + shape.decay + 0.02);
+      source.stop(at + atk + shape.decay + 0.02);
     },
 
-    /** A sine tone that dies away and can slide in pitch. */
+    /** A pitched tone (sine/triangle/sawtooth) that decays and can sweep in frequency. */
     tone(bus: Bus, at: number, shape: ToneShape) {
       const oscillator = context.createOscillator();
+      oscillator.type = shape.type ?? 'sine';
       oscillator.frequency.setValueAtTime(shape.from, at);
       if (shape.to) oscillator.frequency.exponentialRampToValueAtTime(shape.to, at + shape.decay);
       const gain = context.createGain();
+      const atk = shape.attack ?? 0.0012;
       gain.gain.setValueAtTime(0.0001, at);
-      gain.gain.exponentialRampToValueAtTime(shape.level, at + 0.0015);
-      gain.gain.exponentialRampToValueAtTime(0.0001, at + shape.decay);
+      gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, shape.level), at + atk);
+      gain.gain.exponentialRampToValueAtTime(0.0001, at + atk + shape.decay);
       oscillator.connect(gain).connect(output(bus, shape.pan));
       oscillator.start(at);
-      oscillator.stop(at + shape.decay + 0.02);
+      oscillator.stop(at + atk + shape.decay + 0.02);
     },
 
     /** Noise that plays until the page closes, with a slow swell. For wind. */
@@ -165,11 +227,11 @@ export function createEngine(context: BaseAudioContext) {
       const swell = context.createOscillator();
       swell.frequency.value = swellHz;
       const depth = context.createGain();
-      depth.gain.value = level * 0.5;
+      depth.gain.value = level * 0.4;
       swell.connect(depth).connect(gain.gain);
-      swell.start();
       source.connect(filter).connect(gain).connect(inputs[bus]);
       source.start();
+      swell.start();
     },
   };
 }

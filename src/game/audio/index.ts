@@ -47,7 +47,10 @@ export function createAudio() {
     shot(weaponId: WeaponId = 'm1911') {
       if (!engine) return;
       sounds.shot(engine, weaponId);
-      sounds.casing(engine);
+      sounds.casing(engine, weaponId);
+    },
+    zoomClick() {
+      if (engine) sounds.zoomClick(engine);
     },
     weaponSwitch() {
       if (engine) sounds.weaponSwitch(engine);
@@ -62,8 +65,8 @@ export function createAudio() {
     dryFire() {
       if (engine) sounds.dryFire(engine);
     },
-    reload(duration: number, beats: ReloadBeats, empty: boolean) {
-      if (engine) sounds.reload(engine, duration, beats, empty);
+    reload(duration: number, beats: ReloadBeats, empty: boolean, weaponId?: WeaponId) {
+      if (engine) sounds.reload(engine, duration, beats, empty, weaponId);
     },
     aim(up: boolean) {
       if (engine) sounds.aim(engine, up);
@@ -127,6 +130,7 @@ const MEASURED: Record<string, (engine: Engine) => void> = {
     sounds.reload(engine, 2.1, { magazineOut: 0.16, magazineIn: 0.6, slideRelease: 0.84 }, true);
   },
   dryFire: sounds.dryFire,
+  zoomClick: sounds.zoomClick,
   casing: sounds.casing,
   aim: (engine) => {
     sounds.aim(engine, true);
