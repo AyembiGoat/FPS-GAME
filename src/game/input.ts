@@ -1,6 +1,6 @@
 import type { GameInput } from '../core/game';
 
-const MOUSE_SENSITIVITY = 0.0021;
+const BASE_MOUSE_SENSITIVITY = 0.0021;
 
 /**
  * Keyboard and mouse, only while the pointer is captured.
@@ -14,6 +14,9 @@ export function createHumanInput(canvas: HTMLCanvasElement) {
   let yaw = 0;
   let pitch = 0;
   let zoom = 1;
+  let aimBlend = 0;
+  let mouseMultiplier = 1;
+  let adsMultiplier = 1;
 
   const locked = () => document.pointerLockElement === canvas;
   const down = (code: string) => {
@@ -43,10 +46,11 @@ export function createHumanInput(canvas: HTMLCanvasElement) {
   });
   document.addEventListener('mousemove', (event) => {
     if (!locked()) return;
-    // Zoomed in, the same hand movement turns the view less, so it covers the same
-    // distance on screen.
-    yaw -= (event.movementX * MOUSE_SENSITIVITY) / zoom;
-    pitch -= (event.movementY * MOUSE_SENSITIVITY) / zoom;
+    // Zoomed in, the same hand movement turns the view less, scaled further by ADS preference.
+    const adsFactor = 1 + (adsMultiplier - 1) * aimBlend;
+    const scale = (BASE_MOUSE_SENSITIVITY * mouseMultiplier * adsFactor) / zoom;
+    yaw -= event.movementX * scale;
+    pitch -= event.movementY * scale;
   });
   document.addEventListener('pointerlockchange', () => {
     if (!locked()) {
@@ -61,9 +65,15 @@ export function createHumanInput(canvas: HTMLCanvasElement) {
   return {
     locked,
 
-    /** Tell the mouse how far the view is zoomed in. */
-    setZoom(value: number) {
-      zoom = value;
+    /** Tell the mouse how far the view is zoomed in and how far sights are raised. */
+    setAimState(currentZoom: number, currentAim: number) {
+      zoom = currentZoom;
+      aimBlend = Math.max(0, Math.min(1, currentAim));
+    },
+
+    setSensitivity(hipfire: number, ads: number) {
+      mouseMultiplier = hipfire;
+      adsMultiplier = ads;
     },
 
     /** Look that has not been handed to the simulation yet. */

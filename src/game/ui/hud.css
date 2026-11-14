@@ -1,0 +1,826 @@
+.hud-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity var(--ui-dur-base) var(--ui-ease-out);
+}
+
+.hud-layer[data-visible='false'] {
+  opacity: 0;
+}
+
+/* Shared HUD Scrim Plate (zero backdrop-filter on per-frame elements) */
+.hud-plate {
+  position: relative;
+  background: linear-gradient(180deg, rgba(12, 17, 24, 0.72), rgba(7, 10, 15, 0.84));
+  border: 1px solid var(--ui-edge-subtle);
+  border-radius: 2px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 10px 26px rgba(0, 0, 0, 0.36);
+}
+
+.hud-plate::before,
+.hud-plate::after {
+  content: '';
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  pointer-events: none;
+  border-color: rgba(238, 242, 247, 0.42);
+  border-style: solid;
+}
+
+.hud-plate::before {
+  top: -1px;
+  left: -1px;
+  border-width: 1px 0 0 1px;
+}
+
+.hud-plate::after {
+  bottom: -1px;
+  right: -1px;
+  border-width: 0 1px 1px 0;
+}
+
+/* Top Objective & Timer Module */
+.hud-objective {
+  position: fixed;
+  top: var(--ui-safe-y);
+  left: 50%;
+  transform: translateX(-50%) scale(var(--ui-hud-scale));
+  transform-origin: top center;
+  min-width: 320px;
+  padding: 9px 16px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.hud-objective__top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.hud-objective__group {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.hud-objective__label {
+  font-family: var(--ui-font-sans);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--ui-ink-secondary);
+}
+
+.hud-objective__count {
+  font-family: var(--ui-font-display);
+  font-size: 23px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  line-height: 1;
+  color: var(--ui-ink-primary);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.hud-objective__count-sep,
+.hud-objective__count-total {
+  color: var(--ui-ink-secondary);
+  font-weight: 600;
+  font-size: 18px;
+}
+
+.hud-objective__timer {
+  font-family: var(--ui-font-display);
+  font-size: 23px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  color: var(--ui-ink-primary);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.hud-objective__timer[data-active='true'] {
+  color: var(--ui-accent);
+}
+
+.hud-objective__segments {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 4px;
+  height: 5px;
+}
+
+.hud-segment {
+  position: relative;
+  border-radius: 1px;
+  background: rgba(230, 238, 248, 0.16);
+  overflow: hidden;
+}
+
+.hud-segment::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--ui-accent);
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition:
+    transform var(--ui-dur-fast) var(--ui-ease-out),
+    background-color var(--ui-dur-fast) linear;
+}
+
+.hud-segment[data-down='true']::after {
+  transform: scaleX(1);
+}
+
+.hud-objective[data-cleared='true'] .hud-segment::after {
+  background: var(--ui-confirm);
+}
+
+/* Dynamic Crosshair */
+.hud-crosshair {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  transform: scale(var(--ui-crosshair-scale));
+  will-change: opacity, transform;
+}
+
+.hud-crosshair__dot {
+  position: absolute;
+  left: -1.5px;
+  top: -1.5px;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--ui-crosshair-color);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.78);
+}
+
+.hud-crosshair__arm {
+  position: absolute;
+  background: var(--ui-crosshair-color);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.78);
+  will-change: transform;
+}
+
+.hud-crosshair__arm--top,
+.hud-crosshair__arm--bottom {
+  left: -1px;
+  width: 2px;
+  height: 7px;
+}
+
+.hud-crosshair__arm--top {
+  top: -7px;
+}
+
+.hud-crosshair__arm--bottom {
+  top: 0;
+}
+
+.hud-crosshair__arm--left,
+.hud-crosshair__arm--right {
+  top: -1px;
+  width: 7px;
+  height: 2px;
+}
+
+.hud-crosshair__arm--left {
+  left: -7px;
+}
+
+.hud-crosshair__arm--right {
+  left: 0;
+}
+
+/* Hit Marker (< 220ms sharp snap & fade) */
+.hud-hit-marker {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  width: 36px;
+  height: 36px;
+  margin: -18px 0 0 -18px;
+  opacity: 0;
+  transform: scale(0.75);
+  will-change: transform, opacity;
+  filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.95)) drop-shadow(0 1px 4px rgba(0, 0, 0, 0.75));
+}
+
+.hud-hit-marker__base {
+  stroke: #f4f7fb;
+  stroke-width: 2.3;
+  stroke-linecap: square;
+}
+
+.hud-hit-marker__kill {
+  stroke: var(--ui-accent);
+  stroke-width: 2.5;
+  stroke-linecap: square;
+  opacity: 0;
+}
+
+.hud-hit-marker[data-kind='kill'] .hud-hit-marker__base {
+  stroke: #ffffff;
+}
+
+.hud-hit-marker[data-kind='kill'] .hud-hit-marker__kill {
+  opacity: 1;
+}
+
+/* Contextual Reload Prompt */
+.hud-reload-prompt {
+  position: fixed;
+  left: 50%;
+  top: calc(50% + 56px);
+  transform: translate(-50%, 6px) scale(var(--ui-hud-scale));
+  opacity: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 11px 5px 7px;
+  border-radius: 2px;
+  background: rgba(10, 14, 20, 0.82);
+  border: 1px solid var(--ui-edge-strong);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.42);
+  transition:
+    opacity var(--ui-dur-fast) var(--ui-ease-out),
+    transform var(--ui-dur-fast) var(--ui-ease-out),
+    border-color var(--ui-dur-fast) linear;
+}
+
+.hud-reload-prompt[data-state='low'],
+.hud-reload-prompt[data-state='empty'] {
+  opacity: 1;
+  transform: translate(-50%, 0) scale(var(--ui-hud-scale));
+}
+
+.hud-reload-prompt[data-state='low'] {
+  border-color: rgba(240, 140, 58, 0.58);
+}
+
+.hud-reload-prompt[data-state='empty'] {
+  border-color: rgba(229, 83, 75, 0.78);
+  background: linear-gradient(90deg, rgba(44, 14, 16, 0.88), rgba(14, 16, 22, 0.88));
+}
+
+.hud-reload-prompt__text {
+  font-family: var(--ui-font-display);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ui-ink-primary);
+}
+
+.hud-reload-prompt[data-state='low'] .hud-reload-prompt__text {
+  color: var(--ui-warning);
+}
+
+.hud-reload-prompt[data-state='empty'] .hud-reload-prompt__text {
+  color: var(--ui-danger);
+}
+
+/* Stance Indicators (Lean Left / Lean Right / Sprint) */
+.hud-stance {
+  position: fixed;
+  left: var(--ui-safe-x);
+  bottom: var(--ui-safe-y);
+  transform: scale(var(--ui-hud-scale));
+  transform-origin: bottom left;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hud-stance__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px 5px 8px;
+  border-radius: 2px;
+  background: rgba(11, 15, 21, 0.76);
+  border: 1px solid rgba(230, 238, 248, 0.2);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.32);
+  font-family: var(--ui-font-display);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ui-ink-primary);
+  opacity: 0;
+  transform: translateY(6px);
+  transition:
+    opacity var(--ui-dur-fast) var(--ui-ease-out),
+    transform var(--ui-dur-fast) var(--ui-ease-out);
+}
+
+.hud-stance__pill[data-active='true'] {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.hud-stance__pill .ui-icon {
+  width: 15px;
+  height: 15px;
+  color: var(--ui-accent);
+}
+
+/* Bottom-Right Weapon & Ammo Panel */
+.hud-weapon {
+  position: fixed;
+  right: var(--ui-safe-x);
+  bottom: var(--ui-safe-y);
+  transform: scale(var(--ui-hud-scale));
+  transform-origin: bottom right;
+  min-width: 256px;
+  padding: 11px 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition:
+    border-color var(--ui-dur-fast) linear,
+    box-shadow var(--ui-dur-fast) var(--ui-ease-out);
+}
+
+.hud-weapon[data-ammo-state='low'] {
+  border-color: rgba(240, 140, 58, 0.55);
+}
+
+.hud-weapon[data-ammo-state='empty'] {
+  border-color: rgba(229, 83, 75, 0.72);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 0 22px -6px var(--ui-danger-soft),
+    0 10px 26px rgba(0, 0, 0, 0.42);
+}
+
+.hud-weapon[data-dry-fire='true'] {
+  animation: hud-dry-shake 170ms var(--ui-ease-out);
+}
+
+@keyframes hud-dry-shake {
+  0% {
+    transform: scale(var(--ui-hud-scale)) translateX(0);
+  }
+  28% {
+    transform: scale(var(--ui-hud-scale)) translateX(-4px);
+  }
+  62% {
+    transform: scale(var(--ui-hud-scale)) translateX(3px);
+  }
+  100% {
+    transform: scale(var(--ui-hud-scale)) translateX(0);
+  }
+}
+
+.hud-weapon__main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.hud-weapon__counts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.hud-weapon__numerals {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.hud-weapon__rounds {
+  display: inline-block;
+  font-family: var(--ui-font-display);
+  font-size: 52px;
+  font-weight: 700;
+  line-height: 0.86;
+  letter-spacing: -0.01em;
+  color: var(--ui-ink-primary);
+  font-variant-numeric: tabular-nums lining-nums;
+  transition:
+    color var(--ui-dur-fast) linear,
+    transform var(--ui-dur-fast) var(--ui-ease-out);
+}
+
+.hud-weapon__rounds[data-tick='true'] {
+  transform: translateY(-3px) scale(1.06);
+}
+
+.hud-weapon[data-ammo-state='low'] .hud-weapon__rounds {
+  color: var(--ui-warning);
+}
+
+.hud-weapon[data-ammo-state='empty'] .hud-weapon__rounds {
+  color: var(--ui-danger);
+}
+
+.hud-weapon__capacity {
+  font-family: var(--ui-font-display);
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--ui-ink-secondary);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.hud-weapon__status-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 17px;
+  padding: 0 5px;
+  margin-left: 4px;
+  border-radius: 2px;
+  font-family: var(--ui-font-display);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.hud-weapon__status-tag[data-tone='low'] {
+  background: var(--ui-warning-soft);
+  border: 1px solid rgba(240, 140, 58, 0.55);
+  color: var(--ui-warning);
+}
+
+.hud-weapon__status-tag[data-tone='empty'] {
+  background: var(--ui-danger-soft);
+  border: 1px solid rgba(229, 83, 75, 0.68);
+  color: var(--ui-danger);
+}
+
+.hud-weapon__status-tag[data-tone='reload'] {
+  background: var(--ui-accent-soft);
+  border: 1px solid rgba(229, 169, 60, 0.55);
+  color: var(--ui-accent);
+}
+
+/* 7 Round Pips */
+.hud-weapon__pips {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.hud-pip {
+  width: 7px;
+  height: 14px;
+  border-radius: 1px;
+  background: var(--ui-ink-primary);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  transition:
+    transform var(--ui-dur-fast) var(--ui-ease-out),
+    opacity var(--ui-dur-fast) var(--ui-ease-out),
+    background-color var(--ui-dur-fast) linear;
+}
+
+.hud-pip[data-filled='false'] {
+  background: rgba(230, 238, 248, 0.16);
+  box-shadow: none;
+  opacity: 0.55;
+  transform: scaleY(0.76);
+}
+
+.hud-weapon[data-ammo-state='low'] .hud-pip[data-filled='true'] {
+  background: var(--ui-warning);
+}
+
+/* Right half of weapon card: M1911 Silhouette + Meta */
+.hud-weapon__divider {
+  width: 1px;
+  align-self: stretch;
+  background: var(--ui-edge-subtle);
+}
+
+.hud-weapon__profile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+}
+
+.hud-weapon-svg {
+  width: 98px;
+  height: 51px;
+  color: #e6ecf4;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.45));
+  transition: opacity var(--ui-dur-fast) linear;
+}
+
+.hud-weapon[data-reloading='true'] .hud-weapon-svg {
+  opacity: 0.62;
+}
+
+.hud-weapon__meta {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.hud-weapon__caliber {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ui-ink-muted);
+}
+
+.hud-weapon__name {
+  font-family: var(--ui-font-display);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ui-ink-primary);
+}
+
+/* Reload Progress Bar (tracks real 2.1s reloadTime) */
+.hud-weapon__reload {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 2px;
+}
+
+.hud-weapon__reload-header {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--ui-font-sans);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ui-accent);
+}
+
+.hud-weapon__reload-track {
+  height: 4px;
+  border-radius: 1px;
+  background: rgba(230, 238, 248, 0.14);
+  overflow: hidden;
+}
+
+.hud-weapon__reload-fill {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(90deg, var(--ui-accent), #f7cb6b);
+  transform: scaleX(0);
+  transform-origin: left center;
+  will-change: transform;
+}
+
+/* Stacked Event Feed (Target Down + Distance in Metres) */
+.hud-feed {
+  position: fixed;
+  right: var(--ui-safe-x);
+  top: calc(var(--ui-safe-y) + 68px);
+  transform: scale(var(--ui-hud-scale));
+  transform-origin: top right;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  width: 268px;
+}
+
+.hud-feed__item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 11px 6px 9px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, rgba(16, 22, 30, 0.88), rgba(10, 14, 20, 0.78));
+  border: 1px solid var(--ui-edge-subtle);
+  border-left: 3px solid var(--ui-accent);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.32);
+  opacity: 1;
+  transform: translateX(0);
+  transition:
+    opacity var(--ui-dur-base) var(--ui-ease-out),
+    transform var(--ui-dur-base) var(--ui-ease-out);
+}
+
+.hud-feed__item[data-entering='true'] {
+  opacity: 0;
+  transform: translateX(18px);
+}
+
+.hud-feed__item[data-leaving='true'] {
+  opacity: 0;
+  transform: translateX(10px);
+}
+
+.hud-feed__item .ui-icon {
+  width: 15px;
+  height: 15px;
+  color: var(--ui-accent);
+}
+
+.hud-feed__label {
+  font-family: var(--ui-font-display);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ui-ink-primary);
+}
+
+.hud-feed__distance {
+  margin-left: auto;
+  padding-left: 8px;
+  font-family: var(--ui-font-display);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--ui-accent);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+/* Run Complete Sweep Banner (MW2019 / Valorant horizontal ribbon) */
+.hud-banner {
+  position: fixed;
+  left: 50%;
+  top: clamp(92px, 13.5vh, 148px);
+  width: min(680px, calc(100vw - 48px));
+  transform: translateX(-50%) scale(var(--ui-hud-scale));
+  transform-origin: top center;
+  padding: 16px 32px 14px;
+  background: linear-gradient(
+    90deg,
+    rgba(9, 13, 19, 0) 0%,
+    rgba(10, 15, 22, 0.9) 16%,
+    rgba(13, 19, 28, 0.94) 50%,
+    rgba(10, 15, 22, 0.9) 84%,
+    rgba(9, 13, 19, 0) 100%
+  );
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--ui-dur-base) var(--ui-ease-out);
+}
+
+.hud-banner[data-open='true'] {
+  opacity: 1;
+}
+
+.hud-banner__rule {
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(229, 169, 60, 0.85) 25%,
+    #f7d07a 50%,
+    rgba(229, 169, 60, 0.85) 75%,
+    transparent
+  );
+  transform: scaleX(0.25);
+  transition: transform var(--ui-dur-slow) var(--ui-ease-out);
+}
+
+.hud-banner[data-open='true'] .hud-banner__rule {
+  transform: scaleX(1);
+}
+
+.hud-banner__rule--top {
+  top: 0;
+}
+
+.hud-banner__rule--bottom {
+  bottom: 0;
+}
+
+.hud-banner__eyebrow {
+  text-align: center;
+  font-family: var(--ui-font-sans);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ui-confirm);
+}
+
+.hud-banner__title {
+  margin: 2px 0 12px;
+  text-align: center;
+  font-family: var(--ui-font-display);
+  font-size: 36px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  line-height: 1;
+  text-transform: uppercase;
+  color: var(--ui-ink-primary);
+  transform: translateY(6px);
+  transition: transform var(--ui-dur-slow) var(--ui-ease-out);
+}
+
+.hud-banner[data-open='true'] .hud-banner__title {
+  transform: translateY(0);
+}
+
+.hud-banner__stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  max-width: 440px;
+  margin: 0 auto 12px;
+  border-top: 1px solid var(--ui-edge-subtle);
+  border-bottom: 1px solid var(--ui-edge-subtle);
+  padding: 8px 0;
+}
+
+.hud-banner__stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  border-right: 1px solid var(--ui-edge-subtle);
+}
+
+.hud-banner__stat:last-child {
+  border-right: none;
+}
+
+.hud-banner__stat-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ui-ink-secondary);
+}
+
+.hud-banner__stat-value {
+  font-family: var(--ui-font-display);
+  font-size: 25px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--ui-ink-primary);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.hud-banner__reset {
+  max-width: 320px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.hud-banner__reset-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ui-ink-secondary);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.hud-banner__reset-track {
+  height: 3px;
+  border-radius: 1px;
+  background: rgba(230, 238, 248, 0.15);
+  overflow: hidden;
+}
+
+.hud-banner__reset-fill {
+  height: 100%;
+  width: 100%;
+  background: var(--ui-accent);
+  transform: scaleX(1);
+  transform-origin: left center;
+  will-change: transform;
+}
+
+.ui-root[data-reduced-motion='true'] .hud-weapon[data-dry-fire='true'] {
+  animation: none;
+}
+
+.ui-root[data-reduced-motion='true'] .hud-feed__item,
+.ui-root[data-reduced-motion='true'] .hud-banner__title,
+.ui-root[data-reduced-motion='true'] .hud-banner__rule,
+.ui-root[data-reduced-motion='true'] .hud-stance__pill,
+.ui-root[data-reduced-motion='true'] .hud-reload-prompt {
+  transform: none;
+}
+
+.ui-root[data-reduced-motion='true'] .hud-reload-prompt {
+  transform: translate(-50%, 0) scale(var(--ui-hud-scale));
+}

@@ -5,12 +5,11 @@ import type { GameMap } from '../core/map';
 import { eyeAt, PLAYER_TUNING } from '../core/player';
 import type { GameAudio } from './audio';
 import { createEffects } from './effects';
-import { createHud } from './hud';
 import { buildWeaponModel } from './weapons';
 import { createViewmodel } from './weapons/viewmodel';
 import { buildWorld } from './world';
 
-const FIELD_OF_VIEW = 78;
+const DEFAULT_FIELD_OF_VIEW = 78;
 /** Metres between footsteps. */
 const STRIDE = 1.9;
 const MUZZLE_LIGHT_SECONDS = 0.05;
@@ -24,8 +23,8 @@ const SLOW_FRAME_SECONDS = 0.022;
 const LEAN_ROLL = 0.15;
 
 /** The lens angle that magnifies the centre of the view `zoom` times. */
-function zoomedFieldOfView(zoom: number): number {
-  const half = THREE.MathUtils.degToRad(FIELD_OF_VIEW / 2);
+function zoomedFieldOfView(baseFov: number, zoom: number): number {
+  const half = THREE.MathUtils.degToRad(baseFov / 2);
   return THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(half) / zoom));
 }
 
@@ -53,12 +52,12 @@ export function createView(map: GameMap, audio: GameAudio) {
   document.body.prepend(renderer.domElement);
 
   const world = buildWorld(map, renderer);
-  const camera = new THREE.PerspectiveCamera(FIELD_OF_VIEW, 1, 0.05, 3000);
+  let baseFov = DEFAULT_FIELD_OF_VIEW;
+  const camera = new THREE.PerspectiveCamera(baseFov, 1, 0.05, 3000);
   camera.rotation.order = 'YXZ';
   const weaponModel = buildWeaponModel(WEAPON);
   const viewmodel = createViewmodel(weaponModel, world.scene.environment);
   const effects = createEffects(world.scene);
-  const hud = createHud();
 
   const muzzleLight = new THREE.PointLight(0xffc98a, 0, 9, 2);
   world.scene.add(muzzleLight);
@@ -93,13 +92,20 @@ export function createView(map: GameMap, audio: GameAudio) {
   const toSound = new THREE.Vector3();
   const rightward = new THREE.Vector3();
   let zoom = 1;
+  let currentAim = 0;
   let aimDirection = -1;
+  let orbitClock = 0;
 
   /** Where a point in the world sits between the ears: -1 left, 1 right. */
   function panOf(point: { x: number; y: number; z: number }): number {
     toSound.set(point.x, point.y, point.z).sub(camera.position).normalize();
     rightward.setFromMatrixColumn(camera.matrixWorld, 0);
     return toSound.dot(rightward) * 0.8;
+  }
+
+  function syncCameraFov() {
+    camera.fov = zoomedFieldOfView(baseFov, zoom);
+    camera.updateProjectionMatrix();
   }
 
   function resize() {
@@ -116,6 +122,19 @@ export function createView(map: GameMap, audio: GameAudio) {
 
   return {
     canvas: renderer.domElement,
+
+    setFieldOfView(fovDegrees: number) {
+      if (fovDegrees === baseFov) return;
+      baseFov = fovDegrees;
+      syncCameraFov();
+    },
+
+    resetTargets(state: GameState) {
+      state.targetsDown.forEach((down, idx) => {
+        world.targets[idx]?.setDown(down);
+      });
+      shadowsStale = true;
+    },
 
     /**
      * Keep the game smooth on slower machines. Call once per displayed frame with how
@@ -151,6 +170,7 @@ export function createView(map: GameMap, audio: GameAudio) {
 
     /** Current magnification, so mouse speed can be scaled to match. */
     zoom: () => zoom,
+    aimBlend: () => currentAim,
 
     /** React to what happened in one simulation step. */
     handle(events: readonly GameEvent[], state: GameState) {
@@ -169,7 +189,6 @@ export function createView(map: GameMap, audio: GameAudio) {
             break;
           case 'target-down':
             world.targets[event.index]?.setDown(true);
-            hud.hit();
             break;
           case 'targets-reset':
             for (const target of world.targets) target.setDown(false);
@@ -191,6 +210,36 @@ export function createView(map: GameMap, audio: GameAudio) {
             break;
         }
       }
+    },
+
+    /**
+     * Slowly drifting vantage camera overlooking Shoot House for the live Title Screen.
+     */
+    renderTitleBackdrop(dt: number, reducedMotion: boolean) {
+      orbitClock += reducedMotion ? dt * 0.08 : dt * 0.24;
+      const swayX = Math.sin(orbitClock) * 2.8;
+      const swayZ = 9.4 + Math.cos(orbitClock * 0.7) * 1.4;
+      const swayY = 2.45 + Math.sin(orbitClock * 0.5) * 0.16;
+
+      if (zoom !== 1) {
+        zoom = 1;
+        syncCameraFov();
+      }
+      camera.position.set(swayX, swayY, swayZ);
+      camera.lookAt(swayX * 0.18, 1.35, -3.8);
+      camera.updateMatrixWorld();
+
+      for (const target of world.targets) {
+        if (target.update(dt)) shadowsStale = true;
+      }
+      effects.update(dt);
+
+      if (shadowsStale) {
+        renderer.shadowMap.needsUpdate = true;
+        shadowsStale = false;
+      }
+      renderer.clear();
+      renderer.render(world.scene, camera);
     },
 
     /**
@@ -247,11 +296,11 @@ export function createView(map: GameMap, audio: GameAudio) {
 
       // Aiming narrows the lens by the gun's magnification.
       const aim = THREE.MathUtils.lerp(previous.weapon.aim, state.weapon.aim, alpha);
+      currentAim = aim;
       const wantedZoom = 1 + (WEAPON.aimZoom - 1) * THREE.MathUtils.smoothstep(aim, 0, 1);
       if (wantedZoom !== zoom) {
         zoom = wantedZoom;
-        camera.fov = zoomedFieldOfView(zoom);
-        camera.updateProjectionMatrix();
+        syncCameraFov();
       }
       camera.updateMatrixWorld();
 
@@ -289,13 +338,6 @@ export function createView(map: GameMap, audio: GameAudio) {
         if (target.update(dt)) shadowsStale = true;
       }
       effects.update(dt);
-      hud.update(dt, {
-        rounds: state.weapon.rounds,
-        reloading,
-        aiming: aim > 0.5,
-        down: state.targetsDown.filter(Boolean).length,
-        total: state.targetsDown.length,
-      });
 
       if (!draw) return;
       if (shadowsStale) {

@@ -8,7 +8,7 @@
  * `measureSounds` checks loudness without speakers.
  */
 
-export type Bus = 'weapon' | 'handling' | 'world' | 'ambience';
+export type Bus = 'weapon' | 'handling' | 'world' | 'ambience' | 'ui';
 
 /** `level` is the bus volume. `echo` is how much of it reaches the outdoor echo. */
 const BUSES: Record<Bus, { level: number; echo: number }> = {
@@ -17,6 +17,7 @@ const BUSES: Record<Bus, { level: number; echo: number }> = {
   handling: { level: 0.3, echo: 0.03 },
   world: { level: 0.6, echo: 0.35 },
   ambience: { level: 1, echo: 0 },
+  ui: { level: 0.24, echo: 0 },
 };
 
 const MASTER_LEVEL = 0.7;
@@ -115,6 +116,10 @@ export function createEngine(context: BaseAudioContext) {
   return {
     context,
     now: () => context.currentTime,
+    setVolume(volume: number) {
+      const clamped = Math.max(0, Math.min(1, volume));
+      master.gain.setTargetAtTime(MASTER_LEVEL * clamped, context.currentTime, 0.015);
+    },
     /** A random amount either side of `centre`, so repeats never sound identical. */
     vary: (centre: number, spread: number) => centre * (1 + (Math.random() * 2 - 1) * spread),
 
