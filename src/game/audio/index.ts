@@ -1,4 +1,5 @@
 import type { SurfaceMaterial } from '../../core/map';
+import type { WeaponId } from '../../core/weapon';
 import type { Engine } from './engine';
 import { createEngine } from './engine';
 import * as sounds from './sounds';
@@ -19,6 +20,7 @@ export function createAudio() {
   let engine: Engine | null = null;
   let leftFoot = false;
   let volume = 0.8;
+  let uiCuesEnabled = true;
   let lastHoverAt = 0;
 
   return {
@@ -38,10 +40,17 @@ export function createAudio() {
       if (engine) engine.setVolume(volume);
     },
 
-    shot() {
+    setUiCuesEnabled(enabled: boolean) {
+      uiCuesEnabled = enabled;
+    },
+
+    shot(weaponId: WeaponId = 'm1911') {
       if (!engine) return;
-      sounds.shot(engine);
+      sounds.shot(engine, weaponId);
       sounds.casing(engine);
+    },
+    weaponSwitch() {
+      if (engine) sounds.weaponSwitch(engine);
     },
     /** `pan` is where the sound is: -1 hard left, 1 hard right. */
     steel(distance: number, pan: number) {
@@ -68,20 +77,20 @@ export function createAudio() {
       if (engine) sounds.land(engine, speed);
     },
     uiHover() {
-      if (!engine) return;
+      if (!engine || !uiCuesEnabled) return;
       const now = engine.now();
       if (now - lastHoverAt < 0.045) return;
       lastHoverAt = now;
       sounds.uiHover(engine);
     },
     uiSelect() {
-      if (engine) sounds.uiSelect(engine);
+      if (engine && uiCuesEnabled) sounds.uiSelect(engine);
     },
     uiBack() {
-      if (engine) sounds.uiBack(engine);
+      if (engine && uiCuesEnabled) sounds.uiBack(engine);
     },
     uiConfirm() {
-      if (engine) sounds.uiConfirm(engine);
+      if (engine && uiCuesEnabled) sounds.uiConfirm(engine);
     },
   };
 }
@@ -89,7 +98,31 @@ export function createAudio() {
 export type GameAudio = ReturnType<typeof createAudio>;
 
 const MEASURED: Record<string, (engine: Engine) => void> = {
-  shot: sounds.shot,
+  shot: (engine) => {
+    sounds.shot(engine, 'm1911');
+  },
+  shotHk416: (engine) => {
+    sounds.shot(engine, 'hk416');
+  },
+  shotAk47: (engine) => {
+    sounds.shot(engine, 'ak47');
+  },
+  shotScarH: (engine) => {
+    sounds.shot(engine, 'scar-h');
+  },
+  shotMp5: (engine) => {
+    sounds.shot(engine, 'mp5');
+  },
+  shotShotgun: (engine) => {
+    sounds.shot(engine, 'remington-870');
+  },
+  shotSniper: (engine) => {
+    sounds.shot(engine, 'awm');
+  },
+  shotDeagle: (engine) => {
+    sounds.shot(engine, 'desert-eagle');
+  },
+  weaponSwitch: sounds.weaponSwitch,
   reload: (engine) => {
     sounds.reload(engine, 2.1, { magazineOut: 0.16, magazineIn: 0.6, slideRelease: 0.84 }, true);
   },

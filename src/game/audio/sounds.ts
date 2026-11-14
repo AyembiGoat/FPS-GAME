@@ -1,4 +1,5 @@
 import type { SurfaceMaterial } from '../../core/map';
+import type { WeaponId } from '../../core/weapon';
 import type { Bus, Engine } from './engine';
 
 /**
@@ -62,20 +63,144 @@ function rustle(engine: Engine, at: number, level: number, length: number) {
   });
 }
 
-export function shot(engine: Engine) {
+export function shot(engine: Engine, weaponId: WeaponId = 'm1911') {
   const now = engine.now();
-  // Crack, then the body of the blast, then the push in the chest.
-  engine.noise('weapon', now, { filter: 'highpass', from: 2600, level: 0.8, decay: 0.022 });
-  engine.noise('weapon', now, {
-    filter: 'lowpass',
-    from: engine.vary(7500, 0.1),
-    to: 650,
-    level: 1,
-    decay: 0.15,
-  });
-  engine.tone('weapon', now, { from: engine.vary(165, 0.06), to: 48, level: 0.8, decay: 0.12 });
-  // The slide slamming back and forward again.
-  clack(engine, 'weapon', now + 0.045, { pitch: 2300, level: 0.1 });
+
+  switch (weaponId) {
+    case 'hk416':
+      // Crisp supersonic 5.56×45mm crack, tight mid punch, fast piston bolt snap.
+      engine.noise('weapon', now, { filter: 'highpass', from: 3200, level: 0.85, decay: 0.02 });
+      engine.noise('weapon', now, {
+        filter: 'lowpass',
+        from: engine.vary(8400, 0.08),
+        to: 780,
+        level: 0.92,
+        decay: 0.14,
+      });
+      engine.tone('weapon', now, { from: engine.vary(188, 0.06), to: 58, level: 0.72, decay: 0.1 });
+      clack(engine, 'weapon', now + 0.036, { pitch: 2750, level: 0.095 });
+      break;
+
+    case 'ak47':
+      // Heavy metallic 7.62×39mm bark with lower chest thump and stamped-steel bolt rattle.
+      engine.noise('weapon', now, { filter: 'highpass', from: 2200, level: 0.72, decay: 0.026 });
+      engine.noise('weapon', now, {
+        filter: 'lowpass',
+        from: engine.vary(6400, 0.1),
+        to: 520,
+        level: 0.96,
+        decay: 0.18,
+      });
+      engine.tone('weapon', now, {
+        from: engine.vary(142, 0.06),
+        to: 42,
+        level: 0.85,
+        decay: 0.14,
+      });
+      clack(engine, 'weapon', now + 0.048, { pitch: 1850, level: 0.14, length: 0.045 });
+      break;
+
+    case 'scar-h':
+      // Deep 7.62×51mm battle-rifle boom + wide PWS muzzle-brake air blast.
+      engine.noise('weapon', now, { filter: 'highpass', from: 2800, level: 0.84, decay: 0.028 });
+      engine.noise('weapon', now, {
+        filter: 'lowpass',
+        from: engine.vary(7800, 0.08),
+        to: 460,
+        level: 0.98,
+        decay: 0.21,
+      });
+      engine.tone('weapon', now, {
+        from: engine.vary(124, 0.05),
+        to: 38,
+        level: 0.88,
+        decay: 0.16,
+      });
+      clack(engine, 'weapon', now + 0.05, { pitch: 2100, level: 0.12 });
+      break;
+
+    case 'mp5':
+      // Compact, tight 9×19mm SMG pop with shorter tail and crisp roller-delayed action.
+      engine.noise('weapon', now, { filter: 'highpass', from: 3000, level: 0.72, decay: 0.016 });
+      engine.noise('weapon', now, {
+        filter: 'lowpass',
+        from: engine.vary(7200, 0.1),
+        to: 980,
+        level: 0.86,
+        decay: 0.095,
+      });
+      engine.tone('weapon', now, {
+        from: engine.vary(225, 0.07),
+        to: 72,
+        level: 0.68,
+        decay: 0.08,
+      });
+      clack(engine, 'weapon', now + 0.032, { pitch: 2900, level: 0.08 });
+      break;
+
+    case 'remington-870':
+      // Wide-band 12-gauge shotgun thunder followed by iconic two-stroke pump rack.
+      engine.noise('weapon', now, { filter: 'highpass', from: 1800, level: 0.82, decay: 0.034 });
+      engine.noise('weapon', now, {
+        filter: 'lowpass',
+        from: engine.vary(6200, 0.08),
+        to: 320,
+        level: 1.0,
+        decay: 0.26,
+      });
+      engine.tone('weapon', now, { from: engine.vary(108, 0.05), to: 32, level: 0.92, decay: 0.2 });
+      // Tactile pump-action rack: rearward pull ("chk") then forward chambering ("CHK").
+      clack(engine, 'handling', now + 0.26, { pitch: 1680, level: 0.14, length: 0.05 });
+      clack(engine, 'handling', now + 0.44, { pitch: 2150, level: 0.17, length: 0.045 });
+      break;
+
+    case 'awm':
+      // Massive .338 Lapua Magnum supersonic whip, cannon bass, outdoor tail, and bolt cycle.
+      engine.noise('weapon', now, { filter: 'highpass', from: 3600, level: 0.9, decay: 0.032 });
+      engine.noise('weapon', now, {
+        filter: 'lowpass',
+        from: engine.vary(8600, 0.06),
+        to: 280,
+        level: 1.0,
+        decay: 0.36,
+      });
+      engine.tone('weapon', now, { from: engine.vary(94, 0.04), to: 28, level: 0.95, decay: 0.24 });
+      // Four-beat mechanical bolt cycle: unlock, pull back, push home, lock down.
+      clack(engine, 'handling', now + 0.34, { pitch: 2650, level: 0.09, length: 0.025 });
+      clack(engine, 'handling', now + 0.48, { pitch: 1850, level: 0.11, length: 0.045 });
+      clack(engine, 'handling', now + 0.72, { pitch: 2050, level: 0.12, length: 0.04 });
+      clack(engine, 'handling', now + 0.88, { pitch: 2850, level: 0.1, length: 0.022 });
+      break;
+
+    case 'desert-eagle':
+      // Heavy .50 AE hand-cannon boom with big low-end punch and weighty stainless slide slam.
+      engine.noise('weapon', now, { filter: 'highpass', from: 2100, level: 0.84, decay: 0.028 });
+      engine.noise('weapon', now, {
+        filter: 'lowpass',
+        from: engine.vary(6800, 0.08),
+        to: 420,
+        level: 0.98,
+        decay: 0.21,
+      });
+      engine.tone('weapon', now, { from: engine.vary(128, 0.05), to: 38, level: 0.9, decay: 0.16 });
+      clack(engine, 'weapon', now + 0.058, { pitch: 1950, level: 0.13, length: 0.042 });
+      break;
+
+    case 'm1911':
+    default:
+      // Classic .45 ACP pistol crack, crisp body, and parkerized slide cycle.
+      engine.noise('weapon', now, { filter: 'highpass', from: 2600, level: 0.8, decay: 0.022 });
+      engine.noise('weapon', now, {
+        filter: 'lowpass',
+        from: engine.vary(7500, 0.1),
+        to: 650,
+        level: 1,
+        decay: 0.15,
+      });
+      engine.tone('weapon', now, { from: engine.vary(165, 0.06), to: 48, level: 0.8, decay: 0.12 });
+      clack(engine, 'weapon', now + 0.045, { pitch: 2300, level: 0.1 });
+      break;
+  }
 }
 
 /** A spent case landing on concrete a moment later: two small bounces. */
@@ -123,11 +248,11 @@ export function steel(engine: Engine, distance: number, pan: number) {
 export function impact(engine: Engine, distance: number, surface: SurfaceMaterial, pan: number) {
   const at = engine.now() + distance / SPEED_OF_SOUND;
   const level = falloff(distance);
-  if (surface === 'plywood' || surface === 'crate') {
-    // A hollow knock.
+  if (surface === 'plywood' || surface === 'crate' || surface === 'timber') {
+    // A hollow/solid wood knock.
     engine.noise('world', at, {
       filter: 'bandpass',
-      from: engine.vary(520, 0.15),
+      from: engine.vary(surface === 'timber' ? 430 : 520, 0.15),
       q: 3,
       level: 0.45 * level,
       decay: 0.09,
@@ -140,8 +265,25 @@ export function impact(engine: Engine, distance: number, surface: SurfaceMateria
       decay: 0.03,
       pan,
     });
+  } else if (surface === 'container') {
+    // Corrugated steel container: hollow resonant metallic clang.
+    engine.tone('world', at, {
+      from: engine.vary(320, 0.1),
+      to: 180,
+      level: 0.25 * level,
+      decay: 0.24,
+      pan,
+    });
+    engine.noise('world', at, {
+      filter: 'bandpass',
+      from: engine.vary(1650, 0.15),
+      q: 4.5,
+      level: 0.42 * level,
+      decay: 0.14,
+      pan,
+    });
   } else {
-    // A sharp smack and a little falling grit.
+    // Concrete/floor: a sharp smack and a little falling grit.
     engine.noise('world', at, {
       filter: 'bandpass',
       from: engine.vary(2100, 0.15),
@@ -216,6 +358,13 @@ export function reload(
 /** Bringing the sights up or lowering them. */
 export function aim(engine: Engine, up: boolean) {
   rustle(engine, engine.now(), up ? 0.05 : 0.035, 0.16);
+}
+
+/** Drawing or slinging a firearm when switching Primary <-> Secondary. */
+export function weaponSwitch(engine: Engine) {
+  const now = engine.now();
+  rustle(engine, now, 0.06, 0.2);
+  clack(engine, 'handling', now + 0.1, { pitch: 2250, level: 0.065, length: 0.028 });
 }
 
 export function footstep(engine: Engine, level: number, left: boolean) {
