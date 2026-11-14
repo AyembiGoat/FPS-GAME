@@ -1319,20 +1319,25 @@
 }
 
 /* ============================================================================
-   AAA LOADOUT / ARMORY SCREEN (3-COLUMN TACTICAL WORKSPACE + LIVE 3D TURNTABLE)
+   AAA LOADOUT / ARMORY SCREEN (RESPONSIVE 3-COL / 2-COL WORKSPACE + 3D STAGE)
    ============================================================================ */
+.loadout-screen {
+  padding: clamp(14px, 2.8vh, 38px) clamp(16px, 3vw, 56px);
+}
+
 .loadout-carry {
   display: flex;
   align-items: stretch;
-  gap: 10px;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .loadout-carry__slot {
   appearance: none;
-  min-width: 176px;
-  padding: 7px 12px;
+  min-width: 152px;
+  padding: 6px 11px;
   border-radius: 2px;
-  background: rgba(11, 16, 23, 0.86);
+  background: rgba(11, 16, 23, 0.9);
   border: 1px solid var(--ui-edge-subtle);
   display: flex;
   flex-direction: column;
@@ -1347,8 +1352,8 @@
 
 .loadout-carry__slot[data-selected='true'],
 .loadout-carry__slot:hover {
-  border-color: rgba(229, 169, 60, 0.72);
-  background: rgba(20, 27, 38, 0.92);
+  border-color: rgba(229, 169, 60, 0.78);
+  background: rgba(22, 30, 44, 0.95);
 }
 
 .loadout-carry__top {
@@ -1362,12 +1367,12 @@
   font-weight: 600;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--ui-ink-muted);
+  color: var(--ui-ink-secondary);
 }
 
 .loadout-carry__weapon {
   font-family: var(--ui-font-display);
-  font-size: 19px;
+  font-size: 18px;
   font-weight: 700;
   letter-spacing: 0.05em;
   line-height: 1.05;
@@ -1381,6 +1386,25 @@
   letter-spacing: 0.08em;
 }
 
+.loadout-tabs {
+  padding: 0 10px;
+  gap: 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.loadout-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.loadout-tabs .settings-tab {
+  padding: 10px 11px 11px;
+  font-size: 15px;
+  gap: 6px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 .loadout-tab__count {
   display: inline-flex;
   align-items: center;
@@ -1389,7 +1413,7 @@
   height: 17px;
   padding: 0 5px;
   border-radius: 2px;
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.09);
   font-size: 11px;
   color: var(--ui-ink-secondary);
 }
@@ -1398,31 +1422,84 @@
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(252px, 0.88fr) minmax(0, 1.45fr) minmax(264px, 0.92fr);
+  grid-template-columns: 256px minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.loadout-detail {
+  min-height: 0;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(248px, 0.9fr);
+  overflow: hidden;
+}
+
+/* Custom sleek dark scrollbars so bright OS scrollbars never clash */
+.loadout-list,
+.loadout-detail,
+.loadout-stats,
+.settings-panel-host,
+.controls-grid {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(229, 169, 60, 0.35) rgba(8, 12, 18, 0.55);
+}
+
+.loadout-list::-webkit-scrollbar,
+.loadout-detail::-webkit-scrollbar,
+.loadout-stats::-webkit-scrollbar,
+.settings-panel-host::-webkit-scrollbar,
+.controls-grid::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.loadout-list::-webkit-scrollbar-track,
+.loadout-detail::-webkit-scrollbar-track,
+.loadout-stats::-webkit-scrollbar-track,
+.settings-panel-host::-webkit-scrollbar-track,
+.controls-grid::-webkit-scrollbar-track {
+  background: rgba(8, 12, 18, 0.55);
+}
+
+.loadout-list::-webkit-scrollbar-thumb,
+.loadout-detail::-webkit-scrollbar-thumb,
+.loadout-stats::-webkit-scrollbar-thumb,
+.settings-panel-host::-webkit-scrollbar-thumb,
+.controls-grid::-webkit-scrollbar-thumb {
+  background: rgba(229, 169, 60, 0.35);
+  border-radius: 3px;
+}
+
+.loadout-list::-webkit-scrollbar-thumb:hover,
+.loadout-detail::-webkit-scrollbar-thumb:hover,
+.loadout-stats::-webkit-scrollbar-thumb:hover {
+  background: rgba(229, 169, 60, 0.62);
 }
 
 /* Column 1: Weapon Cards Rail */
 .loadout-list {
   min-height: 0;
   overflow-y: auto;
-  padding: 14px;
+  padding: 10px;
+  background: #0a0f17;
   border-right: 1px solid var(--ui-edge-subtle);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 7px;
 }
 
 .loadout-card {
   position: relative;
   appearance: none;
   width: 100%;
-  padding: 9px 12px 8px;
+  flex-shrink: 0;
+  padding: 8px 10px 7px;
   border-radius: 2px;
-  background: rgba(18, 24, 34, 0.62);
-  border: 1px solid var(--ui-edge-subtle);
+  background: rgba(20, 27, 39, 0.8);
+  border: 1px solid rgba(230, 238, 248, 0.12);
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
   cursor: pointer;
   text-align: left;
   color: var(--ui-ink-primary);
@@ -1445,8 +1522,8 @@
 
 .loadout-card:hover,
 .loadout-card[data-selected='true'] {
-  background: rgba(28, 38, 54, 0.9);
-  border-color: var(--ui-edge-strong);
+  background: rgba(31, 43, 62, 0.96);
+  border-color: rgba(229, 169, 60, 0.55);
 }
 
 .loadout-card[data-selected='true']::before {
@@ -1457,7 +1534,7 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
 }
 
 .loadout-card__titles {
@@ -1467,44 +1544,45 @@
 
 .loadout-card__name {
   font-family: var(--ui-font-display);
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 700;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.05em;
   line-height: 1.05;
   text-transform: uppercase;
+  color: #f4f7fb;
 }
 
 .loadout-card__caliber {
   font-size: 11px;
-  color: var(--ui-ink-muted);
-  letter-spacing: 0.08em;
+  color: rgba(210, 221, 235, 0.72);
+  letter-spacing: 0.06em;
 }
 
 .loadout-card__badge {
-  padding: 2px 6px;
+  padding: 2px 5px;
   border-radius: 2px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid var(--ui-edge-subtle);
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(230, 238, 248, 0.14);
   font-family: var(--ui-font-display);
   font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--ui-ink-secondary);
   white-space: nowrap;
 }
 
 .loadout-card[data-equipped='true'] .loadout-card__badge {
-  background: rgba(229, 169, 60, 0.18);
-  border-color: rgba(229, 169, 60, 0.65);
+  background: rgba(229, 169, 60, 0.22);
+  border-color: rgba(229, 169, 60, 0.75);
   color: var(--ui-accent);
 }
 
 .loadout-card__svg {
   width: 100%;
-  height: 40px;
-  color: #dfe6f0;
-  opacity: 0.9;
+  height: 32px;
+  color: #e4ebf5;
+  opacity: 0.92;
 }
 
 .loadout-card[data-selected='true'] .loadout-card__svg {
@@ -1517,23 +1595,20 @@
   justify-content: space-between;
   font-size: 10px;
   font-weight: 600;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.09em;
   text-transform: uppercase;
-  color: var(--ui-ink-muted);
+  color: rgba(205, 217, 232, 0.68);
 }
 
 /* Column 2: Interactive 3D Hero Stage */
 .loadout-stage {
   min-height: 0;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  padding: 12px 18px;
+  padding: 12px 16px;
   gap: 8px;
-  background: radial-gradient(
-    ellipse 85% 75% at 50% 48%,
-    rgba(30, 40, 56, 0.42),
-    rgba(8, 12, 18, 0.25) 75%
-  );
+  background: #0e141f;
   border-right: 1px solid var(--ui-edge-subtle);
 }
 
@@ -1585,16 +1660,16 @@
 .loadout-stage__viewport {
   position: relative;
   flex: 1;
-  min-height: 140px;
+  min-height: 150px;
   border-radius: 2px;
-  border: 1px solid var(--ui-edge-subtle);
+  border: 1px solid rgba(230, 238, 248, 0.16);
   background:
     radial-gradient(
-      ellipse 72% 62% at 50% 48%,
-      rgba(96, 118, 148, 0.34),
-      rgba(14, 20, 30, 0.82) 76%
+      ellipse 76% 68% at 50% 48%,
+      rgba(128, 152, 186, 0.42),
+      rgba(22, 31, 46, 0.92) 76%
     ),
-    linear-gradient(180deg, rgba(24, 32, 46, 0.65), rgba(10, 14, 21, 0.92));
+    linear-gradient(180deg, #1b2536, #0f1622);
   overflow: hidden;
   cursor: grab;
   user-select: none;
@@ -1692,11 +1767,12 @@
 
 /* Column 3: Real Ballistic Stats Panel */
 .loadout-stats {
-  padding: 18px 20px;
-  background: rgba(9, 13, 19, 0.72);
+  min-height: 0;
+  padding: 14px 16px;
+  background: #0b1018;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 11px;
   overflow-y: auto;
 }
 
@@ -1704,7 +1780,7 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding-bottom: 10px;
+  padding-bottom: 8px;
   border-bottom: 1px solid var(--ui-edge-subtle);
 }
 
@@ -1718,19 +1794,19 @@
 
 .loadout-stats__compare {
   font-size: 12px;
-  color: var(--ui-ink-muted);
+  color: rgba(210, 220, 234, 0.72);
 }
 
 .loadout-stats__list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .loadout-stat {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 4px;
 }
 
 .loadout-stat__top {
@@ -1743,9 +1819,9 @@
 .loadout-stat__label {
   font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--ui-ink-secondary);
+  color: #d3dde9;
 }
 
 .loadout-stat__values {
@@ -1758,7 +1834,7 @@
   font-family: var(--ui-font-display);
   font-size: 16px;
   font-weight: 700;
-  color: var(--ui-ink-primary);
+  color: #f4f7fb;
   font-variant-numeric: tabular-nums lining-nums;
 }
 
@@ -1777,9 +1853,9 @@
 
 .loadout-stat__track {
   position: relative;
-  height: 6px;
+  height: 7px;
   border-radius: 1px;
-  background: rgba(230, 238, 248, 0.1);
+  background: rgba(230, 238, 248, 0.14);
   overflow: hidden;
 }
 
@@ -1854,7 +1930,7 @@
 
 .loadout-optics__pills {
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 4px;
 }
@@ -1938,12 +2014,52 @@
   color: var(--ui-ink-primary);
 }
 
-@media (max-width: 1020px) {
-  .settings-workspace {
-    grid-template-columns: 1fr;
-  }
+/* Split-pane & laptop layout (700px–1120px): clean 2-column workspace, zero overlap */
+@media (max-width: 1120px) {
   .loadout-workspace {
-    grid-template-columns: 1fr;
+    grid-template-columns: 206px minmax(0, 1fr);
+  }
+  .loadout-detail {
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+  .loadout-stage {
+    flex: 0 0 auto;
+    border-right: none;
+    border-bottom: 1px solid var(--ui-edge-subtle);
+  }
+  .loadout-stage__viewport {
+    flex: 0 0 auto;
+    height: clamp(165px, 28vh, 220px);
+    min-height: 165px;
+  }
+  .loadout-stats {
+    flex: 0 0 auto;
+    overflow: visible;
+  }
+  .loadout-stats__list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px 18px;
+  }
+  .loadout-tabs .tabs-key-hint {
+    display: none;
+  }
+}
+
+@media (max-width: 960px) {
+  .settings-workspace {
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+  .settings-panel-host {
+    flex: 0 0 auto;
+    overflow: visible;
+    border-right: none;
+    border-bottom: 1px solid var(--ui-edge-subtle);
   }
   .controls-grid {
     grid-template-columns: 1fr;
@@ -1951,5 +2067,45 @@
   .pause-screen__body {
     flex-direction: column;
     align-items: flex-start;
+  }
+}
+
+/* Very narrow viewports (<700px): horizontal weapon strip + vertical stage & stats */
+@media (max-width: 699px) {
+  .loadout-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .loadout-carry {
+    width: 100%;
+  }
+  .loadout-carry__slot {
+    flex: 1;
+    min-width: 0;
+  }
+  .loadout-workspace {
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+  .loadout-list {
+    flex: 0 0 auto;
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-right: none;
+    border-bottom: 1px solid var(--ui-edge-subtle);
+    padding: 8px;
+  }
+  .loadout-card {
+    width: 156px;
+  }
+  .loadout-detail {
+    flex: 0 0 auto;
+    overflow: visible;
+  }
+  .loadout-stats__list {
+    grid-template-columns: 1fr;
   }
 }

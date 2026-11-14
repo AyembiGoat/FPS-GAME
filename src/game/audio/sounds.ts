@@ -42,8 +42,8 @@ function clack(
   engine.noise(bus, at, {
     filter: 'bandpass',
     from: pitch * 2.34,
-    q: 12,
-    level: options.level * 0.48,
+    q: 7,
+    level: options.level * 0.45,
     decay: length * 0.62,
     ...(pan !== undefined && { pan }),
   });
@@ -749,8 +749,8 @@ export function uiHover(engine: Engine) {
   engine.tone('ui', now, {
     from: 920,
     to: 720,
-    level: 0.055,
-    decay: 0.016,
+    level: 0.085,
+    decay: 0.018,
   });
 }
 
@@ -779,14 +779,14 @@ export function uiBack(engine: Engine) {
     filter: 'bandpass',
     from: 1450,
     q: 5,
-    level: 0.09,
-    decay: 0.018,
+    level: 0.12,
+    decay: 0.02,
   });
   engine.tone('ui', now, {
     from: 520,
     to: 340,
-    level: 0.085,
-    decay: 0.05,
+    level: 0.115,
+    decay: 0.052,
   });
 }
 

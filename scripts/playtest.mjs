@@ -80,6 +80,36 @@ if (args.includes('--materials')) {
       const loadoutCardCount = await game.page.$$eval('.loadout-card', (els) => els.length);
       check('armory renders all 8 firearms in All tab', loadoutCardCount === 8);
 
+      // Verify Armory panels never overlap at desktop (1280x720) OR split-pane (860x660) widths!
+      const checkNoLoadoutOverlap = () =>
+        game.page.evaluate(() => {
+          const rect = (sel) => document.querySelector(sel)?.getBoundingClientRect();
+          const list = rect('.loadout-list');
+          const stage = rect('.loadout-stage');
+          const stats = rect('.loadout-stats');
+          const overlap = (a, b) =>
+            Boolean(
+              a &&
+              b &&
+              a.left < b.right - 1 &&
+              a.right > b.left + 1 &&
+              a.top < b.bottom - 1 &&
+              a.bottom > b.top + 1,
+            );
+          return !overlap(list, stage) && !overlap(stage, stats) && !overlap(list, stats);
+        });
+      const desktopNoOverlap = await checkNoLoadoutOverlap();
+      await game.page.setViewport({ width: 860, height: 660 });
+      await new Promise((r) => setTimeout(r, 180));
+      const splitPaneNoOverlap = await checkNoLoadoutOverlap();
+      await shot('17b-loadout-split-860x660');
+      await game.page.setViewport({ width: 1280, height: 720 });
+      await new Promise((r) => setTimeout(r, 150));
+      check(
+        'armory layout has zero panel overlap at desktop & split-pane widths',
+        desktopNoOverlap && splitPaneNoOverlap,
+      );
+
       // 3. Redesigned AAA Settings Screen (Controls + Interface tabs + persistence)
       await game.page.evaluate(() => {
         window.__fps.openScreen('settings');

@@ -241,7 +241,9 @@ export function createLoadoutScreen(
 
   statsPanel.append(statsHeader, statsList, payloadRow);
 
-  workspace.append(listRail, stagePanel, statsPanel);
+  const detailPane = el('div', 'loadout-detail');
+  detailPane.append(stagePanel, statsPanel);
+  workspace.append(listRail, detailPane);
   frame.append(tabBar, workspace);
 
   // Footer

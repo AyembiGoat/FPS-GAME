@@ -11,12 +11,12 @@ export type Bus = 'weapon' | 'handling' | 'world' | 'ambience' | 'ui';
 
 /** `level` is the bus volume. `echo` is how much of it reaches the outdoor shoot-house reverb. */
 const BUSES: Record<Bus, { level: number; echo: number }> = {
-  weapon: { level: 0.44, echo: 0.34 },
+  weapon: { level: 0.82, echo: 0.32 },
   // Reloading, dry fire, turret clicks, cloth: arm's-length handling stays well below gunfire.
-  handling: { level: 0.34, echo: 0.04 },
-  world: { level: 0.62, echo: 0.38 },
+  handling: { level: 0.12, echo: 0.04 },
+  world: { level: 0.3, echo: 0.36 },
   ambience: { level: 1, echo: 0 },
-  ui: { level: 0.32, echo: 0 },
+  ui: { level: 0.15, echo: 0 },
 };
 
 const MASTER_LEVEL = 0.72;
@@ -74,10 +74,10 @@ export function createEngine(context: BaseAudioContext) {
 
   // Transparent bus limiter catching peaks cleanly without pumping.
   const limiter = context.createDynamicsCompressor();
-  limiter.threshold.value = -4.5;
-  limiter.knee.value = 6;
-  limiter.ratio.value = 9;
-  limiter.attack.value = 0.0015;
+  limiter.threshold.value = -6;
+  limiter.knee.value = 5;
+  limiter.ratio.value = 12;
+  limiter.attack.value = 0.0005;
   limiter.release.value = 0.11;
   limiter.connect(master).connect(context.destination);
 
@@ -110,13 +110,13 @@ export function createEngine(context: BaseAudioContext) {
       const tail = i < context.sampleRate * 0.024 ? 0 : smooth * (1 - t) ** 2.35;
       data[i] = tail * 0.72;
     }
-    // Stamp crisp early concrete wall slapback reflections!
+    // Stamp crisp early concrete wall slapback reflections without phase-spiking peaks.
     for (const [sec, lGain, rGain] of earlyTaps) {
       const idx = Math.floor(sec * context.sampleRate);
       const gain = channel === 0 ? lGain : rGain;
       for (let k = 0; k < 26 && idx + k < data.length; k++) {
         const env = Math.exp(-k / 6.5);
-        data[idx + k] = (data[idx + k] ?? 0) + (rand() * 2 - 1) * gain * env * 0.48;
+        data[idx + k] = (data[idx + k] ?? 0) + (rand() * 2 - 1) * gain * env * 0.18;
       }
     }
   }
@@ -188,10 +188,12 @@ export function createEngine(context: BaseAudioContext) {
       const filter = context.createBiquadFilter();
       filter.type = shape.filter;
       filter.Q.value = shape.q ?? 0.7;
+      filter.frequency.value = shape.from;
       filter.frequency.setValueAtTime(shape.from, at);
       if (shape.to) filter.frequency.exponentialRampToValueAtTime(shape.to, at + shape.decay);
       const gain = context.createGain();
       const atk = shape.attack ?? 0.001;
+      gain.gain.value = 0;
       gain.gain.setValueAtTime(0.0001, at);
       gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, shape.level), at + atk);
       gain.gain.exponentialRampToValueAtTime(0.0001, at + atk + shape.decay);
@@ -204,10 +206,12 @@ export function createEngine(context: BaseAudioContext) {
     tone(bus: Bus, at: number, shape: ToneShape) {
       const oscillator = context.createOscillator();
       oscillator.type = shape.type ?? 'sine';
+      oscillator.frequency.value = shape.from;
       oscillator.frequency.setValueAtTime(shape.from, at);
       if (shape.to) oscillator.frequency.exponentialRampToValueAtTime(shape.to, at + shape.decay);
       const gain = context.createGain();
       const atk = shape.attack ?? 0.0012;
+      gain.gain.value = 0;
       gain.gain.setValueAtTime(0.0001, at);
       gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, shape.level), at + atk);
       gain.gain.exponentialRampToValueAtTime(0.0001, at + atk + shape.decay);

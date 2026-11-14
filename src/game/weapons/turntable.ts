@@ -12,7 +12,7 @@ import { buildWeaponModel } from './index';
 export function createWeaponTurntable(container: HTMLElement) {
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.15;
+  renderer.toneMappingExposure = 1.32;
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
   renderer.domElement.className = 'armory-stage-canvas';
   container.append(renderer.domElement);
@@ -21,36 +21,36 @@ export function createWeaponTurntable(container: HTMLElement) {
 
   // Procedural Armory studio softbox environment so dark metallic PBR steels & optics gleam.
   const studio = new THREE.Scene();
-  studio.background = new THREE.Color(0x1f2733);
+  studio.background = new THREE.Color(0x283344);
   const softboxMat = (color: number) =>
     new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide });
-  const overhead = new THREE.Mesh(new THREE.PlaneGeometry(8, 3.6), softboxMat(0xfff5e4));
+  const overhead = new THREE.Mesh(new THREE.PlaneGeometry(8, 3.6), softboxMat(0xfff7ea));
   overhead.position.set(0, 3.8, 0.4);
   overhead.rotation.x = Math.PI / 2;
-  const frontPanel = new THREE.Mesh(new THREE.PlaneGeometry(7, 3.2), softboxMat(0xdce8f8));
+  const frontPanel = new THREE.Mesh(new THREE.PlaneGeometry(7.5, 3.4), softboxMat(0xe8f1fc));
   frontPanel.position.set(0, 1.2, 4.4);
   frontPanel.rotation.y = Math.PI;
-  const rimPanel = new THREE.Mesh(new THREE.PlaneGeometry(6.5, 3.0), softboxMat(0x9bc4f0));
+  const rimPanel = new THREE.Mesh(new THREE.PlaneGeometry(6.8, 3.2), softboxMat(0xb4d4f8));
   rimPanel.position.set(-2.6, 1.8, -3.6);
   rimPanel.lookAt(0, 0, 0);
-  const warmAccent = new THREE.Mesh(new THREE.PlaneGeometry(4.5, 2.2), softboxMat(0xffcf82));
+  const warmAccent = new THREE.Mesh(new THREE.PlaneGeometry(4.5, 2.2), softboxMat(0xffd796));
   warmAccent.position.set(3.2, 0.8, 1.8);
   warmAccent.lookAt(0, 0, 0);
   studio.add(overhead, frontPanel, rimPanel, warmAccent);
 
   const pmrem = new THREE.PMREMGenerator(renderer);
   scene.environment = pmrem.fromScene(studio, 0.04).texture;
-  scene.environmentIntensity = 1.25;
+  scene.environmentIntensity = 1.45;
   pmrem.dispose();
 
   // Crisp 3-point key/fill/rim lighting calibrated for matte gunmetal, FDE, walnut & OD green.
-  const hemi = new THREE.HemisphereLight(0xe4eefc, 0x353c48, 1.55);
-  const key = new THREE.DirectionalLight(0xfff4e2, 3.2);
-  key.position.set(2.2, 2.8, 2.6);
-  const rim = new THREE.DirectionalLight(0x9ac6f2, 2.2);
+  const hemi = new THREE.HemisphereLight(0xedf4ff, 0x454f60, 1.85);
+  const key = new THREE.DirectionalLight(0xfff6e8, 3.5);
+  key.position.set(2.2, 2.8, 2.8);
+  const rim = new THREE.DirectionalLight(0xafd2f8, 2.6);
   rim.position.set(-2.8, 2.0, -2.0);
-  const fill = new THREE.DirectionalLight(0xf2ba5c, 0.95);
-  fill.position.set(-1.0, -0.6, 2.8);
+  const fill = new THREE.DirectionalLight(0xf6c978, 1.2);
+  fill.position.set(-1.2, -0.4, 3.0);
   scene.add(hemi, key, rim, fill);
 
   // Subtle dark brushed studio turntable disc beneath the floating firearm.
@@ -182,6 +182,15 @@ export function createWeaponTurntable(container: HTMLElement) {
   container.addEventListener('pointerup', endDrag);
   container.addEventListener('pointercancel', endDrag);
   window.addEventListener('resize', resize);
+  if (typeof ResizeObserver !== 'undefined') {
+    const observer = new ResizeObserver(() => {
+      if (active) {
+        resize();
+        renderer.render(scene, camera);
+      }
+    });
+    observer.observe(container);
+  }
 
   return {
     setWeapon(id: WeaponId, opticId?: OpticId) {

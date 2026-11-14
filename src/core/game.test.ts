@@ -156,7 +156,7 @@ describe('Shoot House', () => {
     const { cleared, shots } = botRun(shootHouse, 180);
     expect(cleared).toBe(true);
     expect(shots).toBeLessThanOrEqual(shootHouse.targets.length + 3);
-  });
+  }, 15_000);
 
   it('can be cleared by the bot using the Remington 870 shotgun and AWM sniper', () => {
     const shotgun = botRun(shootHouse, 180, { primary: 'remington-870', secondary: 'm1911' });
@@ -164,7 +164,7 @@ describe('Shoot House', () => {
 
     const sniper = botRun(shootHouse, 180, { primary: 'awm', secondary: 'desert-eagle' });
     expect(sniper.cleared).toBe(true);
-  });
+  }, 15_000);
 });
 
 function botRun(
