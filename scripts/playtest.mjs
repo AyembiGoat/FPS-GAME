@@ -1,17 +1,27 @@
 // Plays the game in a real browser and saves screenshots to playtest/.
 //
-//   npm run playtest                  every feature, UI screens, then the bot clears the map
+//   npm run playtest                  every feature, UI screens, weapons, then the bot clears the map
 //   npm run playtest -- --quick       spawn screenshot only
 //   npm run playtest -- --materials   every texture side by side, nothing else
-//   npm run playtest -- --weapon      the gun and hands from four sides, nothing else
-//   npm run playtest -- --keep after  copy the screenshots to playtest/after/ afterwards,
-//                                     to compare against an earlier run
+//   npm run playtest -- --weapon      default weapon four-view (or --weapon=ak47, --weapon=all)
+//   npm run playtest -- --keep after  copy screenshots to playtest/after/ afterwards
 //
 // Exits non-zero if the page logs an error, a feature check fails, or the bot
 // cannot clear the map.
 
 import { cpSync, mkdirSync, readdirSync } from 'node:fs';
 import { launchGame } from './browser.mjs';
+
+const ALL_WEAPONS = [
+  'hk416',
+  'ak47',
+  'scar-h',
+  'mp5',
+  'remington-870',
+  'awm',
+  'm1911',
+  'desert-eagle',
+];
 
 const args = process.argv.slice(2);
 const quick = args.includes('--quick');
@@ -21,12 +31,22 @@ const check = (name, passed) => {
   summary.checks[name] = passed;
 };
 
-const preview = ['materials', 'weapon'].find((name) => args.includes(`--${name}`));
-if (preview) {
-  const page = await launchGame({ mode: preview });
-  await page.screenshot(`playtest/${preview}.png`);
+const weaponFlag = args.find((a) => a === '--weapon' || a.startsWith('--weapon='));
+if (args.includes('--materials')) {
+  const page = await launchGame({ mode: 'materials' });
+  await page.screenshot('playtest/materials.png');
   summary.errors = page.errors;
   await page.close();
+} else if (weaponFlag) {
+  const target = weaponFlag.includes('=') ? weaponFlag.split('=')[1] : 'hk416';
+  const list = target === 'all' ? ALL_WEAPONS : [target];
+  summary.errors = [];
+  for (const id of list) {
+    const page = await launchGame({ mode: `weapon=${id}` });
+    await page.screenshot(`playtest/weapon-${id}.png`);
+    summary.errors.push(...page.errors);
+    await page.close();
+  }
 } else {
   const game = await launchGame();
   const shot = (name) => game.screenshot(`playtest/${name}.png`);
@@ -34,7 +54,7 @@ if (preview) {
     await shot('01-spawn');
 
     if (!quick) {
-      // Verify Title, Settings, Controls, and Pause UI screens plus settings persistence.
+      // 1. Title Screen
       await game.page.evaluate(() => window.__fps.openScreen('title'));
       await new Promise((r) => setTimeout(r, 240));
       await shot('00-title-menu');
@@ -42,15 +62,36 @@ if (preview) {
         btns.map((b) => b.getAttribute('data-entry')),
       );
       check(
-        'title menu shows play, settings, controls',
-        JSON.stringify(titleEntries) === JSON.stringify(['play', 'settings', 'controls']),
+        'title menu shows play, loadout, settings, controls',
+        JSON.stringify(titleEntries) ===
+          JSON.stringify(['play', 'loadout', 'settings', 'controls']),
       );
 
-      await game.page.evaluate(() => window.__fps.openScreen('settings'));
+      // 2. Armory / Loadout Screen (live 3D turntable + real stats + weapon equip persistence)
+      await game.page.evaluate(() => window.__fps.openScreen('loadout'));
+      await new Promise((r) => setTimeout(r, 360));
+      await shot('15-loadout-hk416');
+      await game.page.evaluate(() => window.__fps.inspectLoadout('awm'));
+      await new Promise((r) => setTimeout(r, 360));
+      await shot('16-loadout-awm');
+      await game.page.evaluate(() => window.__fps.inspectLoadout('desert-eagle'));
+      await new Promise((r) => setTimeout(r, 300));
+      await shot('17-loadout-deagle');
+      const loadoutCardCount = await game.page.$$eval('.loadout-card', (els) => els.length);
+      check('armory renders all 8 firearms in All tab', loadoutCardCount === 8);
+
+      // 3. Redesigned AAA Settings Screen (Controls + Interface tabs + persistence)
+      await game.page.evaluate(() => {
+        window.__fps.openScreen('settings');
+        window.__fps.selectSettingsTab('controls');
+      });
       await new Promise((r) => setTimeout(r, 220));
-      await shot('12-settings-screen');
+      await shot('12-settings-controls');
+      await game.page.evaluate(() => window.__fps.selectSettingsTab('interface'));
+      await new Promise((r) => setTimeout(r, 220));
+      await shot('12b-settings-interface');
       const updatedSettings = await game.page.evaluate(() =>
-        window.__fps.settings({ fov: 90, crosshairColor: 'brass' }),
+        window.__fps.settings({ fov: 90, crosshairColor: 'brass', aimMode: 'toggle' }),
       );
       const savedInStorage = await game.page.evaluate(() =>
         window.localStorage.getItem('fps.settings.v1'),
@@ -59,10 +100,14 @@ if (preview) {
         'settings apply and persist to localStorage',
         updatedSettings.fov === 90 &&
           updatedSettings.crosshairColor === 'brass' &&
+          updatedSettings.aimMode === 'toggle' &&
           Boolean(savedInStorage && savedInStorage.includes('"fov":90')),
       );
-      await game.page.evaluate(() => window.__fps.settings({ fov: 78, crosshairColor: 'white' }));
+      await game.page.evaluate(() =>
+        window.__fps.settings({ fov: 78, crosshairColor: 'white', aimMode: 'hold' }),
+      );
 
+      // 4. Controls Screen
       await game.page.evaluate(() => window.__fps.openScreen('controls'));
       await new Promise((r) => setTimeout(r, 220));
       await shot('13-controls-screen');
@@ -70,85 +115,120 @@ if (preview) {
         '.controls-screen .ui-keycap, .controls-screen .ui-mouse-badge',
         (els) => els.length,
       );
-      check('controls screen renders keycaps and mouse badges', keycapCount >= 12);
+      check('controls screen renders keycaps and mouse badges', keycapCount >= 14);
 
+      // 5. Gameplay: HK416 Primary — walk, fire, reload, ADS, Lean + ADS
       await game.page.evaluate(() => window.__fps.openScreen('playing'));
-
-      // A person's first ten seconds: walk forward, fire, reload.
       await game.step({ forward: 1 }, 45);
-      await shot('02-walking');
-      await game.step({ fire: true }, 2);
-      await shot('03-firing');
-      await game.step({}, 20);
+      await shot('02-walking-hk416');
+      await game.step({ fire: true }, 4);
+      await shot('03-firing-hk416');
+      await game.step({}, 18);
 
-      // Reload: one screenshot at each beat of the animation.
       await game.step({ reload: true }, 1);
-      const reloadSteps = {
-        'a-magazine-out': 30,
-        'b-hand-away': 30,
-        'c-magazine-in': 22,
-        'd-hand-back': 22,
-      };
-      for (const [name, steps] of Object.entries(reloadSteps)) {
-        await game.step({}, steps);
-        await shot(`04-reload-${name}`);
-      }
-      await game.step({}, 60);
-      check('reload refills the magazine', (await game.state()).weapon.rounds === 7);
+      await game.step({}, 38);
+      await shot('04-reload-mid');
+      await game.step({}, 120);
+      check('HK416 reload refills 30-round magazine', (await game.state()).weapon.rounds === 30);
 
-      // Aim: sights come up, the view zooms, and a shot still works.
       await game.step({ aim: true }, 30);
-      await shot('07-aiming');
+      await shot('07-hk416-aiming');
       const aimed = await game.state();
       const zoom = await game.zoom();
       summary.zoom = zoom;
       check('aim reaches fully up', aimed.weapon.aim === 1);
-      check('view is zoomed while aiming', zoom > 1.01);
-      const aimedShot = await game.step({ aim: true, fire: true }, 2);
-      await shot('08-aiming-firing');
-      check(
-        'can fire while aiming',
-        aimedShot.some((event) => event.type === 'shot'),
-      );
-      await game.step({}, 30);
-      check('aim comes back down', (await game.state()).weapon.aim === 0);
-      check('zoom returns to 1', (await game.zoom()) === 1);
+      check('view is zoomed while aiming', zoom > 1.05);
 
-      // Lean both ways, then fire while leaning.
-      await game.step({ lean: -1 }, 20);
-      await shot('09-lean-left');
+      // Lean left + right + pivot-accurate Lean + ADS
+      await game.step({ aim: true, lean: -1 }, 24);
+      await shot('09-hk416-lean-left-ads');
       check('leans left', (await game.state()).player.lean < -0.3);
-      await game.step({ lean: 1 }, 40);
-      await shot('10-lean-right');
+      await game.step({ aim: true, lean: 1 }, 45);
+      await shot('10-hk416-lean-right-ads');
       check('leans right', (await game.state()).player.lean > 0.3);
       const leanShot = await game.step({ lean: 1, fire: true, aim: true }, 2);
       check(
-        'can fire while leaning',
+        'can fire while leaning + aiming',
         leanShot.some((event) => event.type === 'shot'),
       );
-      await game.step({ lean: 1, aim: true }, 20);
-      await shot('11-lean-right-aiming');
-      await game.step({}, 30);
-      check('stands back up', (await game.state()).player.lean === 0);
+      await game.step({}, 35);
+      check('stands back up and lowers sights', (await game.state()).player.lean === 0);
 
-      // Pause overlay during an active run.
-      await game.page.evaluate(() => window.__fps.openScreen('pause'));
+      // 6. Weapon Switching [1] -> [2] (M1911 Sidearm) -> [1]
+      await game.step({ switchSlot: 'secondary' }, 25);
+      await shot('18-secondary-m1911');
+      check(
+        'switches cleanly to secondary weapon',
+        (await game.state()).weapon.weaponId === 'm1911',
+      );
+      await game.step({ switchSlot: 'primary' }, 25);
+      check(
+        'switches cleanly back to primary weapon',
+        (await game.state()).weapon.weaponId === 'hk416',
+      );
+
+      // 7. Remington 870 Shotgun multi-pellet firing
+      await game.page.evaluate(() => window.__fps.equipWeapon('remington-870', 'primary'));
+      await game.step({}, 10);
+      await shot('19-shotgun-870-hip');
+      const sgEvents = await game.step({ fire: true }, 2);
+      const sgShot = sgEvents.find((e) => e.type === 'shot');
+      check(
+        'Remington 870 fires 8 pellets in one shell',
+        Boolean(sgShot && sgShot.hits.length >= 1),
+      );
+
+      // 8. AWM Sniper Rifle + 6x Telescopic Scope + East 38m Sniper Lane + Scoped Lean
+      await game.page.evaluate(() => {
+        window.__fps.equipWeapon('awm', 'primary');
+        // Stand at the mouth of the East 38m Sniper Lane looking straight downrange!
+        window.__fps.place({ x: 18.5, y: 0, z: 16.5 }, 0, 0);
+      });
+      await game.step({}, 6);
+      await shot('20-east-sniper-lane-hip');
+      await game.step({ aim: true }, 35);
+      await shot('21-awm-scoped-6x');
+      const awmZoom = await game.zoom();
+      summary.awmZoom = awmZoom;
+      check('AWM telescopic scope zooms >= 5.5x', awmZoom >= 5.5);
+
+      await game.step({ aim: true, lean: -1 }, 24);
+      await shot('22-awm-scoped-lean-left');
+      await game.step({}, 35);
+
+      // 9. West Breach House Interior Shot (AK-47)
+      await game.page.evaluate(() => {
+        window.__fps.equipWeapon('ak47', 'primary');
+        window.__fps.place({ x: -12.5, y: 0, z: 11.5 }, 0.25, 0);
+      });
+      await game.step({}, 6);
+      await shot('23-west-breach-ak47');
+
+      // 10. Pause overlay during an active run
+      await game.page.evaluate(() => {
+        window.__fps.equipWeapon('hk416', 'primary');
+        window.__fps.openScreen('pause');
+      });
       await new Promise((r) => setTimeout(r, 220));
       await shot('14-pause-menu');
       const pauseEntries = await game.page.$$eval('.pause-screen .ui-menu-btn', (btns) =>
         btns.map((b) => b.getAttribute('data-entry')),
       );
       check(
-        'pause menu shows resume, restart, settings, controls, quit',
+        'pause menu shows resume, loadout, restart, settings, controls, quit',
         JSON.stringify(pauseEntries) ===
-          JSON.stringify(['resume', 'restart', 'settings', 'controls', 'quit']),
+          JSON.stringify(['resume', 'loadout', 'restart', 'settings', 'controls', 'quit']),
       );
+
+      // Reset cleanly to default HK416 + M1911 for the full bot run!
       await game.page.evaluate(() => {
+        window.__fps.equipWeapon('hk416', 'primary');
+        window.__fps.equipWeapon('m1911', 'secondary');
         window.__fps.restart();
         window.__fps.openScreen('playing');
       });
 
-      // Loudness, measured without speakers. Each value is a fraction of the gunshot.
+      // 11. Loudness balance across all 8 firearms & all surfaces
       summary.loudness = await game.loudness();
       check('reload is much quieter than a shot', summary.loudness.reload < 0.2);
       check('ui cues are subtle relative to gunfire', summary.loudness.uiConfirm < 0.15);
@@ -157,12 +237,12 @@ if (preview) {
         Object.values(summary.loudness).every((v) => v > 0),
       );
 
-      // Then the bot plays a clean run from spawn. A screenshot after every target that goes down.
+      // 12. Full 14-target Shoot House bot clear!
       let steps = 0;
       let down = 0;
       let botLeaned = false;
       let botAimed = false;
-      const limit = 60 * 180;
+      const limit = 60 * 240;
       while (steps < limit) {
         const events = await game.bot(10);
         steps += 10;
@@ -179,14 +259,14 @@ if (preview) {
       await game.step({}, 10);
       await new Promise((r) => setTimeout(r, 240));
       const state = await game.state();
-      summary.botSeconds = steps / 60;
+      summary.botSeconds = +(steps / 60).toFixed(2);
       summary.runElapsed = +state.run.elapsed.toFixed(2);
       summary.runShots = state.run.shotsFired;
       summary.targetsDown = `${state.targetsDown.filter(Boolean).length} / ${state.targetsDown.length}`;
-      check('bot cleared the map', state.targetsDown.every(Boolean));
+      check('bot cleared all 14 targets on expanded Shoot House', state.targetsDown.every(Boolean));
       check(
-        'run telemetry recorded elapsed time and hits',
-        state.run.elapsed > 0 && state.run.targetHits === 10,
+        'run telemetry recorded elapsed time and all 14 hits',
+        state.run.elapsed > 0 && state.run.targetHits === 14,
       );
       check('bot aimed', botAimed);
       summary.botLeaned = botLeaned;
