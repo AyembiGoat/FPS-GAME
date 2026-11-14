@@ -70,10 +70,10 @@ boundary.
 ## Working with AI agents
 
 [`AGENTS.md`](AGENTS.md) holds the rules every agent follows: keep systems simple, no
-AI slop, verify before pushing, open a pull request when checks pass, and explain the
+AI slop, always work from a reference image, verify before committing, and explain the
 result to the owner in plain language. `CLAUDE.md` points to it.
 
-[`skills.md`](skills.md) lists the playbooks in `.agents/skills/`. Six are written for
+[`skills.md`](skills.md) lists the playbooks in `.agents/skills/`. Seven are written for
 this project. Five are vendored: two from Anthropic's skills repository and three from
 Theo Browne's tstack. `.claude/skills` is a symbolic link to that folder; on Windows,
 enable symlinks in Git (`git config core.symlinks true`) before cloning.

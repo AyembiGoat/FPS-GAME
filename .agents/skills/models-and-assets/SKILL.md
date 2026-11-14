@@ -7,6 +7,8 @@ description: How to add 3D models, textures, animations and audio, including for
 
 No assets are in the repo yet. These are the rules for the first ones.
 
+Start every asset from a reference image, following the `reference-images` skill.
+
 ## Formats
 
 | Asset     | Format                                                   |

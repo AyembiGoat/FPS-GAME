@@ -12,6 +12,7 @@ that read `.agents/skills` load the same set. Read [`AGENTS.md`](AGENTS.md) firs
 | [verify-work](.agents/skills/verify-work/SKILL.md)                     | A check fails; deciding what to test                     |
 | [gameplay-systems](.agents/skills/gameplay-systems/SKILL.md)           | Movement, weapons, damage, AI, game rules                |
 | [level-design](.agents/skills/level-design/SKILL.md)                   | Building or changing maps, collision, spawns             |
+| [reference-images](.agents/skills/reference-images/SKILL.md)           | Before making anything the player will see               |
 | [models-and-assets](.agents/skills/models-and-assets/SKILL.md)         | Adding or changing 3D models, textures, animation, audio |
 | [rendering-performance](.agents/skills/rendering-performance/SKILL.md) | Lighting, materials, effects, frame rate, load time      |
 
@@ -24,7 +25,7 @@ project-specific adjustments in `AGENTS.md`, not in these files.
 | ------------------------------------------------------------------ | --------------------------------------------------- | ---------------------------------------------------------------------- | ---------- |
 | [frontend-design](.agents/skills/frontend-design/SKILL.md)         | Choosing the art direction; designing menus and HUD | [anthropics/skills](https://github.com/anthropics/skills) at `2c5958e` | Apache-2.0 |
 | [webapp-testing](.agents/skills/webapp-testing/SKILL.md)           | Running the game in a real browser to look at it    | [anthropics/skills](https://github.com/anthropics/skills) at `2c5958e` | Apache-2.0 |
-| [file-pr](.agents/skills/file-pr/SKILL.md)                         | Opening a pull request                              | [t3dotgg/tstack](https://github.com/t3dotgg/tstack) at `11e37a7`       | MIT        |
+| [file-pr](.agents/skills/file-pr/SKILL.md)                         | The owner asks for a pull request                   | [t3dotgg/tstack](https://github.com/t3dotgg/tstack) at `11e37a7`       | MIT        |
 | [babysit-pr](.agents/skills/babysit-pr/SKILL.md)                   | Watching a pull request through CI                  | [t3dotgg/tstack](https://github.com/t3dotgg/tstack) at `11e37a7`       | MIT        |
 | [leaving-pr-comments](.agents/skills/leaving-pr-comments/SKILL.md) | Posting any comment on GitHub                       | [t3dotgg/tstack](https://github.com/t3dotgg/tstack) at `11e37a7`       | MIT        |
 

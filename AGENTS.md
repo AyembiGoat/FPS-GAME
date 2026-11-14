@@ -42,16 +42,29 @@ The owner wants to understand what happened without reading code.
 This applies to chat with the owner. Commit messages, PR descriptions and code comments
 are for developers and can be technical.
 
+## Effort
+
+Do your best work every time. Laziness is the most common way agents fail here.
+
+- Finish the whole task. No stubs, no "the rest follows the same pattern", no
+  placeholder passed off as done.
+- Do not stop at the first thing that runs. Look at the result, compare it with what
+  was asked, and redo it when it falls short.
+- Read the code and the skill before changing things. Do not guess at what is there.
+- Check your own output: run it, open the image, read the diff.
+- When something is hard, work the problem. Do not quietly swap in an easier version
+  of the task. If you truly cannot do it, say so plainly.
+- Effort goes into quality, not size. Trying hard never means adding things nobody
+  asked for.
+
 ## Autonomy
 
 Finish the job without checking in at each step.
 
-1. Do the work on a branch.
+1. Do the work on the current branch.
 2. Verify it (see [Verifying](#verifying)).
-3. Commit, push and open a pull request once checks pass. Do not wait to be asked.
-4. Watch the PR and fix real failures, using the `babysit-pr` skill. This repo has no
-   review bots, so wait with `--until green`.
-5. Do not merge. The owner merges.
+3. Commit when it passes.
+4. Never open a pull request unless the owner asks for one. Never merge.
 
 Stop and ask first only when a wrong guess would be expensive to undo: deleting work,
 adding a paid service, choosing the art direction, or a request that can be read two
@@ -84,6 +97,16 @@ in this section:
 - Do not add final art, colour palettes, fonts, HUD styling or post-processing.
 - If a task needs a visual decision, ask the owner. When the direction is being
   chosen, use the `frontend-design` skill to propose it.
+
+## Reference images
+
+Every visual asset starts from a reference image. Full steps:
+[`reference-images`](.agents/skills/reference-images/SKILL.md).
+
+- If the owner provides a reference, use it as given.
+- If not, generate 3 to 5 candidates, look at each one, and build from the best. If
+  none is good, generate again. Never build from a weak reference.
+- Use GPT Image when you can choose the model. Do not use Qwen Image.
 
 ## Architecture
 
@@ -137,7 +160,8 @@ More detail: [`verify-work`](.agents/skills/verify-work/SKILL.md).
 
 ## Pull requests
 
-Use the `file-pr` skill. In short:
+Only when the owner asks for one. Then use the `file-pr` skill, and `babysit-pr` to
+watch it (this repo has no review bots, so wait with `--until green`). In short:
 
 - One request is one PR.
 - Conventional commit titles in plain language that say why it matters:
