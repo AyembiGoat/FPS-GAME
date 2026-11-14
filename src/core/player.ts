@@ -60,7 +60,7 @@ export const PLAYER_TUNING = {
   /** How far the head moves sideways at full lean. */
   leanDistance: 0.42,
   /** Metres per second the head moves while leaning in or out. */
-  leanSpeed: 3,
+  leanSpeed: 3.6,
   /** The head drops slightly at full lean, as the body tilts. */
   leanDrop: 0.05,
   /** Half-width of the space the head needs, so a lean never puts the eye in a wall. */
@@ -96,7 +96,8 @@ export function createPlayer(position: Vec3 = { x: 0, y: 0, z: 0 }, yaw = 0): Pl
 /** Where the eye is for a body at `feet` facing `yaw`, leaned `lean` metres sideways. */
 export function eyeAt(feet: Vec3, yaw: number, lean: number): Vec3 {
   const t = PLAYER_TUNING;
-  const drop = (Math.abs(lean) / t.leanDistance) * t.leanDrop;
+  const ratio = Math.abs(lean) / t.leanDistance;
+  const drop = ratio * ratio * t.leanDrop;
   return {
     x: feet.x + Math.cos(yaw) * lean,
     y: feet.y + t.eyeHeight - drop,
@@ -108,26 +109,47 @@ export function eyePosition(player: PlayerState): Vec3 {
   return eyeAt(player.position, player.yaw, player.lean);
 }
 
-const LEAN_PROBE_STEP = 0.03;
+const LEAN_PROBE_STEP = 0.015;
+const LEAN_REFINE_STEPS = 4;
+
+function headHitsSolid(feet: Vec3, yaw: number, lean: number, solids: readonly Box[]): boolean {
+  const t = PLAYER_TUNING;
+  const eye = eyeAt(feet, yaw, lean);
+  const head: Box = {
+    min: { x: eye.x - t.headRadius, y: eye.y - 0.2, z: eye.z - t.headRadius },
+    max: { x: eye.x + t.headRadius, y: eye.y + t.headRadius, z: eye.z + t.headRadius },
+  };
+  return solids.some((solid) => overlaps(head, solid));
+}
 
 /**
  * How far the head can lean to one side (-1 left, 1 right) before it would enter a
- * solid. The head is moved out in small steps and stops at the last clear one, so
- * the camera can never end up inside or looking through a wall.
+ * solid. Steps outward and binary-refines the contact point to ~1 mm so leaning along
+ * a wall stops cleanly without visible stepping or clipping.
  */
 export function leanRoom(feet: Vec3, yaw: number, side: -1 | 1, solids: readonly Box[]): number {
   const t = PLAYER_TUNING;
-  let room = 0;
+  let clear = 0;
+  let blocked: number | null = null;
   for (let d = LEAN_PROBE_STEP; d <= t.leanDistance + 1e-9; d += LEAN_PROBE_STEP) {
-    const eye = eyeAt(feet, yaw, side * d);
-    const head: Box = {
-      min: { x: eye.x - t.headRadius, y: eye.y - 0.2, z: eye.z - t.headRadius },
-      max: { x: eye.x + t.headRadius, y: eye.y + t.headRadius, z: eye.z + t.headRadius },
-    };
-    if (solids.some((solid) => overlaps(head, solid))) break;
-    room = d;
+    const clamped = Math.min(d, t.leanDistance);
+    if (headHitsSolid(feet, yaw, side * clamped, solids)) {
+      blocked = clamped;
+      break;
+    }
+    clear = clamped;
   }
-  return room;
+  if (blocked !== null) {
+    let lo = clear;
+    let hi = blocked;
+    for (let i = 0; i < LEAN_REFINE_STEPS; i++) {
+      const mid = (lo + hi) * 0.5;
+      if (headHitsSolid(feet, yaw, side * mid, solids)) hi = mid;
+      else lo = mid;
+    }
+    return lo;
+  }
+  return clear;
 }
 
 export interface PlayerStep {

@@ -10,6 +10,95 @@
   opacity: 0;
 }
 
+/* Multi-Optic Magnified Scope Overlays (ACOG 3.5× / Razor LPVO 2–5× / PM II 6–10× FFP) */
+.hud-scope {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 2;
+  /* Pure black optical matte surrounding a razor-sharp 84vmin circular glass aperture (Sniper) */
+  background: radial-gradient(
+    circle at 50% 50%,
+    rgba(0, 0, 0, 0) 0%,
+    rgba(0, 0, 0, 0) 37.5vmin,
+    rgba(5, 8, 12, 0.34) 40.5vmin,
+    rgba(2, 4, 7, 0.98) 42.2vmin,
+    #020305 44vmin
+  );
+  will-change: opacity;
+}
+
+/* Trijicon ACOG TA31: subtle Bindon Aiming Concept peripheral vision outside thick bezel */
+.hud-scope[data-style='acog'] {
+  background: radial-gradient(
+    circle at 50% 50%,
+    rgba(0, 0, 0, 0) 0%,
+    rgba(0, 0, 0, 0) 35.5vmin,
+    rgba(4, 7, 10, 0.96) 38.5vmin,
+    rgba(4, 7, 10, 0.94) 41.5vmin,
+    rgba(6, 9, 14, 0.72) 46vmin,
+    rgba(6, 9, 14, 0.62) 100%
+  );
+}
+
+/* Vortex Razor LPVO: ultra-thin tactical bezel preserving clean peripheral awareness */
+.hud-scope[data-style='lpvo'] {
+  background: radial-gradient(
+    circle at 50% 50%,
+    rgba(0, 0, 0, 0) 0%,
+    rgba(0, 0, 0, 0) 40.2vmin,
+    rgba(5, 7, 11, 0.95) 41.6vmin,
+    rgba(5, 7, 11, 0.88) 43.2vmin,
+    rgba(8, 10, 14, 0.56) 46.5vmin,
+    rgba(8, 10, 14, 0.48) 100%
+  );
+}
+
+.hud-scope__reticle {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  width: 89vmin;
+  height: 89vmin;
+  transform: translate(-50%, -50%);
+  transform-origin: center center;
+  will-change: transform;
+}
+
+.hud-scope__readout {
+  position: fixed;
+  left: calc(50% + 19vmin);
+  top: calc(50% + 25vmin);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+}
+
+.hud-scope__zoom {
+  font-family: var(--ui-font-display);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(240, 244, 250, 0.72);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.95);
+}
+
+.hud-scope__hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--ui-font-display);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(235, 190, 96, 0.88);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.95);
+}
+
 /* Shared HUD Scrim Plate (zero backdrop-filter on per-frame elements) */
 .hud-plate {
   position: relative;
@@ -113,8 +202,8 @@
 
 .hud-objective__segments {
   display: grid;
-  grid-template-columns: repeat(10, 1fr);
-  gap: 4px;
+  grid-template-columns: repeat(14, 1fr);
+  gap: 3px;
   height: 5px;
 }
 
@@ -337,14 +426,58 @@
   color: var(--ui-accent);
 }
 
-/* Bottom-Right Weapon & Ammo Panel */
-.hud-weapon {
+/* Bottom-Right Weapon & Ammo Cluster (Slot Switcher Strip + Dynamic Weapon Plate) */
+.hud-weapon-cluster {
   position: fixed;
   right: var(--ui-safe-x);
   bottom: var(--ui-safe-y);
   transform: scale(var(--ui-hud-scale));
   transform-origin: bottom right;
-  min-width: 256px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.hud-slots {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.hud-slot-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px 3px 5px;
+  border-radius: 2px;
+  background: rgba(10, 14, 20, 0.68);
+  border: 1px solid rgba(230, 238, 248, 0.14);
+  font-family: var(--ui-font-display);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ui-ink-muted);
+  transition:
+    border-color var(--ui-dur-fast) linear,
+    color var(--ui-dur-fast) linear,
+    background-color var(--ui-dur-fast) linear;
+}
+
+.hud-slot-chip[data-active='true'] {
+  background: rgba(14, 20, 28, 0.88);
+  border-color: rgba(229, 169, 60, 0.65);
+  color: var(--ui-ink-primary);
+}
+
+.hud-slot-chip[data-active='true'] .ui-keycap {
+  border-color: var(--ui-accent);
+  color: var(--ui-accent);
+}
+
+.hud-weapon {
+  min-width: 312px;
   padding: 11px 16px 12px;
   display: flex;
   flex-direction: column;
@@ -470,12 +603,16 @@
   color: var(--ui-accent);
 }
 
-/* 7 Round Pips */
+/* Adaptive Round Pips (standard chunky cartridges for <= 12 rds, sleek compact bar for 20-30 rds) */
 .hud-weapon__pips {
   display: flex;
   align-items: center;
   gap: 4px;
   margin-top: 2px;
+}
+
+.hud-weapon__pips[data-density='compact'] {
+  gap: 2px;
 }
 
 .hud-pip {
@@ -490,6 +627,12 @@
     background-color var(--ui-dur-fast) linear;
 }
 
+.hud-weapon__pips[data-density='compact'] .hud-pip {
+  width: 3px;
+  height: 11px;
+  box-shadow: none;
+}
+
 .hud-pip[data-filled='false'] {
   background: rgba(230, 238, 248, 0.16);
   box-shadow: none;
@@ -501,7 +644,7 @@
   background: var(--ui-warning);
 }
 
-/* Right half of weapon card: M1911 Silhouette + Meta */
+/* Right half of weapon card: Dynamic Weapon Silhouette + Meta */
 .hud-weapon__divider {
   width: 1px;
   align-self: stretch;
@@ -515,9 +658,17 @@
   gap: 3px;
 }
 
+.hud-weapon__svg-host {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 126px;
+  height: 50px;
+}
+
 .hud-weapon-svg {
-  width: 98px;
-  height: 51px;
+  width: 126px;
+  height: 50px;
   color: #e6ecf4;
   filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.45));
   transition: opacity var(--ui-dur-fast) linear;
@@ -531,6 +682,20 @@
   display: flex;
   align-items: baseline;
   gap: 6px;
+}
+
+.hud-weapon__mode {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 5px;
+  border-radius: 2px;
+  background: rgba(229, 169, 60, 0.16);
+  border: 1px solid rgba(229, 169, 60, 0.42);
+  font-family: var(--ui-font-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--ui-accent);
 }
 
 .hud-weapon__caliber {

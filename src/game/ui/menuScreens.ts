@@ -1,5 +1,7 @@
 import type { GameState } from '../../core/game';
 import { runAccuracyPercent } from '../../core/game';
+import type { Loadout } from '../../core/weapon';
+import { getWeaponSpec } from '../../core/weapon';
 import type { GameAudio } from '../audio';
 import { el, formatRunTime } from './dom';
 import type { IconName } from './icons';
@@ -22,6 +24,7 @@ function buildNavigableMenu(
 ) {
   const list = el('nav', 'ui-menu-list');
   const buttons: HTMLButtonElement[] = [];
+  const sublabels = new Map<string, HTMLElement>();
   let focusedIndex = 0;
 
   function setFocused(index: number, playSound: boolean) {
@@ -39,8 +42,10 @@ function buildNavigableMenu(
     btn.dataset.entry = entry.id;
     btn.style.setProperty('--item-index', String(idx));
     btn.append(createIcon(entry.icon), el('span', undefined, entry.label));
-    if (entry.sublabel) {
-      btn.append(el('span', 'ui-menu-btn__sub', entry.sublabel));
+    if (entry.sublabel !== undefined) {
+      const sub = el('span', 'ui-menu-btn__sub', entry.sublabel);
+      sublabels.set(entry.id, sub);
+      btn.append(sub);
     }
 
     btn.addEventListener('pointerenter', () => {
@@ -85,6 +90,10 @@ function buildNavigableMenu(
     resetFocus() {
       setFocused(0, false);
     },
+    setSublabel(id: string, text: string) {
+      const node = sublabels.get(id);
+      if (node) node.textContent = text;
+    },
   };
 }
 
@@ -97,9 +106,9 @@ export function createIntroScreen(container: HTMLElement, onFinish: () => void) 
   const title = el('h1', 'intro-screen__title', 'Shoot House');
   const meta = el('div', 'intro-screen__meta');
   meta.append(
-    el('span', undefined, '32 m × 24 m Yard'),
-    el('span', undefined, '10 Steel Targets'),
-    el('span', undefined, 'M1911 · .45 ACP'),
+    el('span', undefined, '52 m × 40 m Compound'),
+    el('span', undefined, '14 AR500 Targets'),
+    el('span', undefined, '8 Firearms Armory'),
   );
   const bar = el('div', 'intro-screen__bar');
   const fill = el('div', 'intro-screen__bar-fill');
@@ -146,6 +155,7 @@ export function createTitleScreen(
   audio: GameAudio,
   actions: {
     readonly onPlay: () => void;
+    readonly onLoadout: () => void;
     readonly onSettings: () => void;
     readonly onControls: () => void;
   },
@@ -163,17 +173,18 @@ export function createTitleScreen(
     el(
       'p',
       'title-lockup__subtitle',
-      'Clear ten steel plates across a two-building plywood course with the M1911.',
+      'Clear fourteen high-contrast AR500 steel silhouettes across the CQB Breach House, Central Yard, and 38 m Sniper Lane.',
     ),
   );
 
   const specs = el('div', 'title-specs');
+  const specLoadout = el('span', undefined, 'HK416 + M1911');
   specs.append(
-    el('span', undefined, 'M1911'),
+    specLoadout,
     el('span', 'title-specs__sep'),
-    el('span', undefined, '10 Targets'),
+    el('span', undefined, '14 Targets'),
     el('span', 'title-specs__sep'),
-    el('span', undefined, 'Timed Course'),
+    el('span', undefined, '3 Tactical Zones'),
   );
   lockup.append(specs);
 
@@ -189,6 +200,16 @@ export function createTitleScreen(
         onSelect: () => {
           audio.uiConfirm();
           actions.onPlay();
+        },
+      },
+      {
+        id: 'loadout',
+        label: 'Loadout',
+        icon: 'loadout',
+        sublabel: 'HK416 · M1911',
+        onSelect: () => {
+          audio.uiSelect();
+          actions.onLoadout();
         },
       },
       {
@@ -235,6 +256,12 @@ export function createTitleScreen(
       screen.dataset.active = active ? 'true' : 'false';
       if (active) nav.resetFocus();
     },
+    syncLoadout(loadout: Loadout) {
+      const p = getWeaponSpec(loadout.primary).name;
+      const s = getWeaponSpec(loadout.secondary).name;
+      specLoadout.textContent = `${p} + ${s}`;
+      nav.setSublabel('loadout', `${p} · ${s}`);
+    },
   };
 }
 
@@ -243,6 +270,7 @@ export function createPauseScreen(
   audio: GameAudio,
   actions: {
     readonly onResume: () => void;
+    readonly onLoadout: () => void;
     readonly onRestart: () => void;
     readonly onSettings: () => void;
     readonly onControls: () => void;
@@ -273,6 +301,16 @@ export function createPauseScreen(
         onSelect: () => {
           audio.uiConfirm();
           actions.onResume();
+        },
+      },
+      {
+        id: 'loadout',
+        label: 'Loadout',
+        icon: 'loadout',
+        sublabel: 'HK416 · M1911',
+        onSelect: () => {
+          audio.uiSelect();
+          actions.onLoadout();
         },
       },
       {
@@ -320,7 +358,7 @@ export function createPauseScreen(
   const telemetry = el('aside', 'pause-telemetry');
   telemetry.append(el('div', 'pause-telemetry__heading', 'Current Run'));
   const grid = el('div', 'pause-telemetry__grid');
-  const valTargets = el('span', 'pause-telemetry__value', '0 / 10');
+  const valTargets = el('span', 'pause-telemetry__value', '0 / 14');
   const valTime = el('span', 'pause-telemetry__value', '00:00.00');
   const valShots = el('span', 'pause-telemetry__value', '0');
   const valAccuracy = el('span', 'pause-telemetry__value', '0%');
@@ -357,6 +395,11 @@ export function createPauseScreen(
       isActive = active;
       screen.dataset.active = active ? 'true' : 'false';
       if (active) nav.resetFocus();
+    },
+    syncLoadout(loadout: Loadout) {
+      const p = getWeaponSpec(loadout.primary).name;
+      const s = getWeaponSpec(loadout.secondary).name;
+      nav.setSublabel('loadout', `${p} · ${s}`);
     },
     syncTelemetry(state: GameState) {
       const down = state.targetsDown.filter(Boolean).length;

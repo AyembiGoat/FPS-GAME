@@ -1,7 +1,7 @@
 import type { Box } from './collision';
 import type { Vec3 } from './vec';
 
-export type SurfaceMaterial = 'floor' | 'concrete' | 'plywood' | 'crate';
+export type SurfaceMaterial = 'floor' | 'concrete' | 'plywood' | 'crate' | 'container' | 'timber';
 
 export interface MapSolid extends Box {
   readonly material: SurfaceMaterial;

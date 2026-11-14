@@ -5,13 +5,25 @@ import type { PlayerInput, PlayerState } from './player';
 import { createPlayer, eyePosition, stepPlayer } from './player';
 import type { Vec3 } from './vec';
 import { add, scale } from './vec';
-import type { WeaponInput, WeaponSpec, WeaponState } from './weapon';
-import { createWeapon, M1911, stepWeapon } from './weapon';
+import type {
+  EffectiveWeaponSpec,
+  Loadout,
+  WeaponId,
+  WeaponInput,
+  WeaponSlot,
+  WeaponState,
+} from './weapon';
+import {
+  createWeapon,
+  DEFAULT_LOADOUT,
+  effectiveWeaponSpec,
+  equipLoadout,
+  pelletDirections,
+  resolveWeaponOptic,
+  stepWeapon,
+} from './weapon';
 
 export type GameInput = PlayerInput & WeaponInput;
-
-/** The weapon the player carries. There is only one so far. */
-export const WEAPON: WeaponSpec = M1911;
 
 export interface RunStats {
   /** Seconds elapsed in the current run; freezes once all targets are knocked down. */
@@ -35,20 +47,28 @@ export interface GameState {
   readonly run: RunStats;
 }
 
+export interface ShotImpact {
+  readonly point: Vec3;
+  readonly normal: Vec3;
+  readonly distance: number;
+  readonly surface: SurfaceMaterial | 'target';
+}
+
 export type GameEvent =
   | {
       readonly type: 'shot';
+      readonly weaponId: WeaponId;
       readonly origin: Vec3;
       readonly direction: Vec3;
-      readonly hit: {
-        readonly point: Vec3;
-        readonly normal: Vec3;
-        readonly distance: number;
-        readonly surface: SurfaceMaterial | 'target';
-      } | null;
+      /** Primary impact (first ray or first pellet that connected). */
+      readonly hit: ShotImpact | null;
+      /** Every projectile impact for this shot (1 for rifles/pistols, up to 8 for buckshot). */
+      readonly hits: readonly ShotImpact[];
     }
   | { readonly type: 'target-down'; readonly index: number; readonly distance: number }
   | { readonly type: 'targets-reset' }
+  | { readonly type: 'weapon-switch'; readonly weaponId: WeaponId; readonly slot: WeaponSlot }
+  | { readonly type: 'zoom-toggle'; readonly zoom: number }
   | { readonly type: 'dry-fire' | 'reload-start' | 'reload-end' | 'jump' }
   | { readonly type: 'land'; readonly speed: number };
 
@@ -98,6 +118,13 @@ export function aimDirection(yaw: number, pitch: number): Vec3 {
   return { x: -Math.sin(yaw) * cosPitch, y: Math.sin(pitch), z: -Math.cos(yaw) * cosPitch };
 }
 
+export function activeWeaponSpec(state: GameState): EffectiveWeaponSpec {
+  return effectiveWeaponSpec(
+    state.weapon.weaponId,
+    resolveWeaponOptic(state.weapon.loadout, state.weapon.weaponId),
+  );
+}
+
 export const INITIAL_RUN_STATS: RunStats = {
   elapsed: 0,
   active: false,
@@ -105,10 +132,10 @@ export const INITIAL_RUN_STATS: RunStats = {
   targetHits: 0,
 };
 
-/** Accuracy percentage (0..100) for a run, or 100 when no shots have missed yet and 0 before firing. */
+/** Accuracy percentage (0..100) for a run, or 0 before firing. */
 export function runAccuracyPercent(run: RunStats): number {
   if (run.shotsFired === 0) return 0;
-  return Math.round((run.targetHits / run.shotsFired) * 100);
+  return Math.min(100, Math.round((run.targetHits / run.shotsFired) * 100));
 }
 
 function hasRunAction(input: GameInput): boolean {
@@ -120,17 +147,34 @@ function hasRunAction(input: GameInput): boolean {
     input.lean !== 0 ||
     input.fire ||
     input.aim ||
-    input.reload
+    input.reload ||
+    Boolean(input.switchSlot)
   );
 }
 
-export function createGame(map: GameMap): GameState {
+export function createGame(
+  map: GameMap,
+  loadout: Loadout = DEFAULT_LOADOUT,
+  activeSlot: WeaponSlot = 'primary',
+): GameState {
   return {
     player: createPlayer(map.spawn.position, map.spawn.yaw),
-    weapon: createWeapon(WEAPON),
+    weapon: createWeapon(loadout, activeSlot),
     targetsDown: map.targets.map(() => false),
     resetIn: 0,
     run: INITIAL_RUN_STATS,
+  };
+}
+
+/** Update the player's carried loadout without disturbing their position or run. */
+export function setGameLoadout(
+  state: GameState,
+  loadout: Loadout,
+  activeSlot: WeaponSlot = state.weapon.activeSlot,
+): GameState {
+  return {
+    ...state,
+    weapon: equipLoadout(state.weapon, loadout, activeSlot),
   };
 }
 
@@ -169,9 +213,30 @@ export function stepGame(
   if (playerStep.jumped) events.push({ type: 'jump' });
   if (playerStep.landedSpeed !== null) events.push({ type: 'land', speed: playerStep.landedSpeed });
 
-  const weaponStep = stepWeapon(state.weapon, input, dt, WEAPON);
+  const weaponStep = stepWeapon(state.weapon, input, dt);
+  const spec = effectiveWeaponSpec(
+    weaponStep.state.weaponId,
+    resolveWeaponOptic(weaponStep.state.loadout, weaponStep.state.weaponId),
+  );
   let clearedThisStep = false;
+
   for (const event of weaponStep.events) {
+    if (event === 'weapon-switch') {
+      events.push({
+        type: 'weapon-switch',
+        weaponId: weaponStep.state.weaponId,
+        slot: weaponStep.state.activeSlot,
+      });
+      continue;
+    }
+    if (event === 'zoom-toggle') {
+      const nextZoom =
+        spec.zoomStages.length === 2 && weaponStep.state.zoomStage === 1
+          ? spec.zoomStages[1]
+          : spec.zoomStages[0];
+      events.push({ type: 'zoom-toggle', zoom: nextZoom });
+      continue;
+    }
     if (event !== 'shot') {
       events.push({ type: event });
       continue;
@@ -184,7 +249,15 @@ export function stepGame(
     // Fire from the eye, wherever leaning has put it, along the aim as it was before
     // this shot's own kick.
     const origin = eyePosition(player);
-    const direction = aimDirection(player.yaw, player.pitch + state.weapon.recoil);
+    const shotPitch = player.pitch + state.weapon.recoil;
+    const baseDirection = aimDirection(player.yaw, shotPitch);
+    const directions = pelletDirections(
+      player.yaw,
+      shotPitch,
+      spec,
+      state.weapon.aim,
+      weaponStep.state.shotSequence,
+    );
 
     // Hit boxes go after the map solids so an index tells us which kind was hit.
     const targetIndexes = map.targets.flatMap((_, index) =>
@@ -193,32 +266,46 @@ export function stepGame(
     const targetBoxes = map.targets.flatMap((spawn, index) =>
       targetsDown[index] ? [] : targetHitBoxes(spawn),
     );
-    const hit = raycast(origin, direction, WEAPON.range, [...map.solids, ...targetBoxes]);
+    const raySolids: Box[] = [...map.solids, ...targetBoxes];
 
-    if (!hit) {
-      events.push({ type: 'shot', origin, direction, hit: null });
-      continue;
-    }
+    const hits: ShotImpact[] = [];
+    const knockedThisShot = new Map<number, number>();
 
-    const mapSolid = map.solids[hit.index];
-    const point = add(origin, scale(direction, hit.distance));
-    events.push({
-      type: 'shot',
-      origin,
-      direction,
-      hit: {
+    for (const direction of directions) {
+      const hit = raycast(origin, direction, spec.range, raySolids);
+      if (!hit) continue;
+      const mapSolid = map.solids[hit.index];
+      const point = add(origin, scale(direction, hit.distance));
+      hits.push({
         point,
         normal: hit.normal,
         distance: hit.distance,
         surface: mapSolid ? mapSolid.material : 'target',
-      },
+      });
+
+      const targetIndex = targetIndexes[hit.index - map.solids.length];
+      if (targetIndex !== undefined && !knockedThisShot.has(targetIndex)) {
+        knockedThisShot.set(targetIndex, hit.distance);
+      }
+    }
+
+    events.push({
+      type: 'shot',
+      weaponId: weaponStep.state.weaponId,
+      origin,
+      direction: baseDirection,
+      hit: hits[0] ?? null,
+      hits,
     });
 
-    const targetIndex = targetIndexes[hit.index - map.solids.length];
-    if (targetIndex !== undefined) {
-      targetHits++;
-      targetsDown = targetsDown.map((down, index) => down || index === targetIndex);
-      events.push({ type: 'target-down', index: targetIndex, distance: hit.distance });
+    if (knockedThisShot.size > 0) {
+      if (!allDownBeforeStep && !clearedThisStep) {
+        targetHits++;
+      }
+      targetsDown = targetsDown.map((down, index) => down || knockedThisShot.has(index));
+      for (const [targetIndex, distance] of knockedThisShot) {
+        events.push({ type: 'target-down', index: targetIndex, distance });
+      }
       if (targetsDown.every(Boolean)) {
         resetIn = TARGET.resetDelay;
         active = false;

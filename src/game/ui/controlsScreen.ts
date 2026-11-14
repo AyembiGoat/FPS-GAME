@@ -27,34 +27,48 @@ const CONTROL_SECTIONS: readonly ControlSectionSpec[] = [
     ],
   },
   {
-    title: 'Combat & Weapon',
+    title: 'Combat & Arsenal',
     rows: [
       { action: 'Look / Aim', bindings: [{ kind: 'mouse', button: 'move', label: 'Mouse' }] },
       {
-        action: 'Fire M1911',
+        action: 'Fire Weapon',
         bindings: [{ kind: 'mouse', button: 'left', label: 'Left Click' }],
       },
       {
-        action: 'Aim Down Sights (Hold)',
+        action: 'Aim / Scope (Hold or Toggle)',
         bindings: [{ kind: 'mouse', button: 'right', label: 'Right Click' }],
       },
+      {
+        action: 'Toggle Variable Scope Zoom (LPVO / Sniper)',
+        bindings: [{ kind: 'key', label: 'V' }],
+      },
       { action: 'Reload Magazine', bindings: [{ kind: 'key', label: 'R' }] },
+      { action: 'Equip Primary Weapon', bindings: [{ kind: 'key', label: '1' }] },
+      { action: 'Equip Secondary Weapon', bindings: [{ kind: 'key', label: '2' }] },
+      {
+        action: 'Quick-Swap Primary / Secondary',
+        bindings: [{ kind: 'key', label: 'Scroll Wheel', wide: true }],
+      },
     ],
   },
   {
     title: 'Tactical Stance',
     rows: [
-      { action: 'Lean Left (Hold)', bindings: [{ kind: 'key', label: 'Q' }] },
-      { action: 'Lean Right (Hold)', bindings: [{ kind: 'key', label: 'E' }] },
+      { action: 'Lean Left (Hold or Toggle)', bindings: [{ kind: 'key', label: 'Q' }] },
+      { action: 'Lean Right (Hold or Toggle)', bindings: [{ kind: 'key', label: 'E' }] },
     ],
   },
   {
     title: 'System',
     rows: [
-      { action: 'Pause / Release Cursor', bindings: [{ kind: 'key', label: 'Esc', wide: true }] },
       {
-        action: 'Menu Navigation',
+        action: 'Pause / Armory / Release Cursor',
+        bindings: [{ kind: 'key', label: 'Esc', wide: true }],
+      },
+      {
+        action: 'Menu Tabs & Navigation',
         bindings: [
+          { kind: 'key', label: 'Q / E', wide: true },
           { kind: 'key', label: '↑ ↓', wide: true },
           { kind: 'key', label: 'Enter', wide: true },
         ],

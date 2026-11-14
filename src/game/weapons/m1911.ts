@@ -1,7 +1,9 @@
 import * as THREE from 'three';
+import type { OpticId } from '../../core/weapon';
 import { applySurface, surface, surfaceMesh } from '../materials';
 import type { WeaponModel } from './model';
 import { FINGER } from './model';
+import { buildMountedOptic } from './parts';
 
 /**
  * M1911 pistol, built from reference/m1911.png (side) and reference/m1911-rear.png
@@ -113,7 +115,7 @@ const GRIP_RAKE = -0.26;
 /** Width across the grip panels, and depth from front strap to back strap. */
 const GRIP_SIZE = [0.029, 0.054] as const;
 
-export function buildM1911(): WeaponModel {
+export function buildM1911(opticId: OpticId = 'irons'): WeaponModel {
   const steel = surface('gun-steel');
   const darkSteel = new THREE.MeshStandardMaterial({
     color: 0x2b2a29,
@@ -173,6 +175,17 @@ export function buildM1911(): WeaponModel {
       slide.add(ridge);
     }
   }
+  let sightY = SLIDE_HEIGHT + 0.0047;
+  let sightZ = 0.076;
+  let aimDistance = 0.42;
+  if (opticId !== 'irons') {
+    const mounted = buildMountedOptic(slide, opticId, SLIDE_HEIGHT - 0.001, 0.042, {
+      compact: true,
+    });
+    sightY = mounted.sightY;
+    sightZ = mounted.sightZ;
+    aimDistance = 0.36;
+  }
   root.add(slide);
 
   // The magazine sits inside the grip; only its base plate shows until it is removed.
@@ -202,10 +215,11 @@ export function buildM1911(): WeaponModel {
     magazineTravel: 0.125,
     slide,
     slideTravel: SLIDE_TRAVEL,
+    recoilProfile: 'pistol',
     muzzle: anchor(root, [0, 0.016, MUZZLE_Z]),
     ejection: anchor(root, [0.012, SLIDE_HEIGHT, -0.014]),
-    sight: anchor(root, [0, SLIDE_HEIGHT + 0.0047, 0.076]),
-    aimDistance: 0.42,
+    sight: anchor(root, [0, sightY, sightZ]),
+    aimDistance,
     hip: {
       position: new THREE.Vector3(0.09, -0.088, -0.54),
       rotation: new THREE.Euler(0, 0.035, 0),
