@@ -3,13 +3,13 @@ import { createBot } from './bot';
 import { bodyBox, overlaps } from './collision';
 import { SIM_STEP_SECONDS } from './fixedLoop';
 import type { GameEvent, GameInput, GameState } from './game';
-import { createGame, stepGame, TARGET, targetCentre, WEAPON } from './game';
+import { createGame, runAccuracyPercent, stepGame, TARGET, targetCentre, WEAPON } from './game';
 import type { GameMap } from './map';
 import { shootHouse } from './maps/shootHouse';
 import { eyePosition, NO_INPUT, PLAYER_TUNING } from './player';
 
 const dt = SIM_STEP_SECONDS;
-const idle: GameInput = { ...NO_INPUT, fire: false, reload: false };
+const idle: GameInput = { ...NO_INPUT, fire: false, reload: false, aim: false };
 
 /** A bare room: the player at the origin facing one target 10 m away down -Z. */
 const range: GameMap = {
@@ -173,5 +173,49 @@ describe('leaning and aiming in play', () => {
       state = stepGame(state, input, dt, range).state;
     }
     expect(state.targetsDown).toEqual([true]);
+  });
+});
+
+describe('run telemetry', () => {
+  it('holds the timer at zero until the player acts, then tracks time, shots, and accuracy', () => {
+    const waiting = run(createGame(range), idle, 30);
+    expect(waiting.state.run.elapsed).toBe(0);
+    expect(waiting.state.run.active).toBe(false);
+    expect(runAccuracyPercent(waiting.state.run)).toBe(0);
+
+    // Miss one shot high, wait for fire interval, then knock down the single target.
+    const missed = run(waiting.state, { ...idle, pitchDelta: 0.12, fire: true }, 1);
+    expect(missed.state.run.active).toBe(true);
+    expect(missed.state.run.shotsFired).toBe(1);
+    expect(missed.state.run.targetHits).toBe(0);
+
+    const cooled = run(missed.state, idle, Math.ceil(WEAPON.fireInterval / dt));
+    const reAimed = run(cooled.state, { ...idle, pitchDelta: pitchToTarget() - 0.12 }, 1);
+    const cleared = run(reAimed.state, { ...idle, fire: true }, 1);
+
+    expect(cleared.state.targetsDown).toEqual([true]);
+    expect(cleared.state.run.active).toBe(false);
+    expect(cleared.state.run.shotsFired).toBe(2);
+    expect(cleared.state.run.targetHits).toBe(1);
+    expect(runAccuracyPercent(cleared.state.run)).toBe(50);
+
+    const frozenElapsed = cleared.state.run.elapsed;
+    expect(frozenElapsed).toBeGreaterThan(0);
+
+    // During the reset countdown, elapsed time and shot stats stay frozen for the banner.
+    const midCountdown = run(cleared.state, { ...idle, forward: 1, fire: true }, 30);
+    expect(midCountdown.state.run.elapsed).toBe(frozenElapsed);
+    expect(midCountdown.state.run.shotsFired).toBe(2);
+    expect(midCountdown.state.run.targetHits).toBe(1);
+
+    // Once targets stand back up, run telemetry resets cleanly for the next run.
+    const afterReset = run(midCountdown.state, idle, Math.ceil(TARGET.resetDelay / dt));
+    expect(afterReset.state.targetsDown).toEqual([false]);
+    expect(afterReset.state.run).toEqual({
+      elapsed: 0,
+      active: false,
+      shotsFired: 0,
+      targetHits: 0,
+    });
   });
 });

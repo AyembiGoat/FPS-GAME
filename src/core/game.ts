@@ -13,6 +13,17 @@ export type GameInput = PlayerInput & WeaponInput;
 /** The weapon the player carries. There is only one so far. */
 export const WEAPON: WeaponSpec = M1911;
 
+export interface RunStats {
+  /** Seconds elapsed in the current run; freezes once all targets are knocked down. */
+  readonly elapsed: number;
+  /** True once the player acts in the current run and until all targets are down. */
+  readonly active: boolean;
+  /** Shots fired in the current run. */
+  readonly shotsFired: number;
+  /** Shots that hit a standing target in the current run. */
+  readonly targetHits: number;
+}
+
 export interface GameState {
   readonly player: PlayerState;
   readonly weapon: WeaponState;
@@ -20,6 +31,8 @@ export interface GameState {
   readonly targetsDown: readonly boolean[];
   /** Seconds until the targets stand back up; 0 while any is still standing. */
   readonly resetIn: number;
+  /** Telemetry for the current target-clearing run. */
+  readonly run: RunStats;
 }
 
 export type GameEvent =
@@ -85,12 +98,39 @@ export function aimDirection(yaw: number, pitch: number): Vec3 {
   return { x: -Math.sin(yaw) * cosPitch, y: Math.sin(pitch), z: -Math.cos(yaw) * cosPitch };
 }
 
+export const INITIAL_RUN_STATS: RunStats = {
+  elapsed: 0,
+  active: false,
+  shotsFired: 0,
+  targetHits: 0,
+};
+
+/** Accuracy percentage (0..100) for a run, or 100 when no shots have missed yet and 0 before firing. */
+export function runAccuracyPercent(run: RunStats): number {
+  if (run.shotsFired === 0) return 0;
+  return Math.round((run.targetHits / run.shotsFired) * 100);
+}
+
+function hasRunAction(input: GameInput): boolean {
+  return (
+    input.forward !== 0 ||
+    input.right !== 0 ||
+    input.jump ||
+    input.sprint ||
+    input.lean !== 0 ||
+    input.fire ||
+    input.aim ||
+    input.reload
+  );
+}
+
 export function createGame(map: GameMap): GameState {
   return {
     player: createPlayer(map.spawn.position, map.spawn.yaw),
     weapon: createWeapon(WEAPON),
     targetsDown: map.targets.map(() => false),
     resetIn: 0,
+    run: INITIAL_RUN_STATS,
   };
 }
 
@@ -103,13 +143,23 @@ export function stepGame(
   const events: GameEvent[] = [];
   let targetsDown = state.targetsDown;
   let resetIn = state.resetIn;
+  let { elapsed, active, shotsFired, targetHits } = state.run;
 
   if (resetIn > 0) {
     resetIn = Math.max(0, resetIn - dt);
     if (resetIn === 0) {
       targetsDown = targetsDown.map(() => false);
+      elapsed = 0;
+      active = false;
+      shotsFired = 0;
+      targetHits = 0;
       events.push({ type: 'targets-reset' });
     }
+  }
+
+  const allDownBeforeStep = resetIn > 0 || (map.targets.length > 0 && targetsDown.every(Boolean));
+  if (!allDownBeforeStep && !active && hasRunAction(input)) {
+    active = true;
   }
 
   const standing = map.targets.filter((_, index) => !targetsDown[index]);
@@ -120,10 +170,15 @@ export function stepGame(
   if (playerStep.landedSpeed !== null) events.push({ type: 'land', speed: playerStep.landedSpeed });
 
   const weaponStep = stepWeapon(state.weapon, input, dt, WEAPON);
+  let clearedThisStep = false;
   for (const event of weaponStep.events) {
     if (event !== 'shot') {
       events.push({ type: event });
       continue;
+    }
+
+    if (!allDownBeforeStep && !clearedThisStep) {
+      shotsFired++;
     }
 
     // Fire from the eye, wherever leaning has put it, along the aim as it was before
@@ -161,11 +216,28 @@ export function stepGame(
 
     const targetIndex = targetIndexes[hit.index - map.solids.length];
     if (targetIndex !== undefined) {
+      targetHits++;
       targetsDown = targetsDown.map((down, index) => down || index === targetIndex);
       events.push({ type: 'target-down', index: targetIndex, distance: hit.distance });
-      if (targetsDown.every(Boolean)) resetIn = TARGET.resetDelay;
+      if (targetsDown.every(Boolean)) {
+        resetIn = TARGET.resetDelay;
+        active = false;
+        clearedThisStep = true;
+      }
     }
   }
 
-  return { state: { player, weapon: weaponStep.state, targetsDown, resetIn }, events };
+  if (active && !allDownBeforeStep && !clearedThisStep) {
+    elapsed += dt;
+  }
+
+  const run: RunStats =
+    elapsed === state.run.elapsed &&
+    active === state.run.active &&
+    shotsFired === state.run.shotsFired &&
+    targetHits === state.run.targetHits
+      ? state.run
+      : { elapsed, active, shotsFired, targetHits };
+
+  return { state: { player, weapon: weaponStep.state, targetsDown, resetIn, run }, events };
 }
