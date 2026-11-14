@@ -1,8 +1,9 @@
 /**
  * A scripted player. It walks the map, finds standing targets and shoots them using
- * the same inputs a person has, including leaning round cover and aiming down the
- * sights. It exists so that tests and agents can play the game: if the bot can clear
- * the map, movement, collision, the weapon and the level layout all work together.
+ * the same inputs a person has, including leaning round cover, aiming down the
+ * sights, sprinting between engagements, and switching to its sidearm when dry.
+ * It exists so that tests and agents can play the game: if the bot can clear the
+ * map, movement, collision, the weapons and the level layout all work together.
  *
  * Whatever a player can do, the bot must be able to do. A new ability gets a new
  * input in GameInput, and the bot is taught when to use it in the same change.
@@ -11,17 +12,19 @@
 import type { Box } from './collision';
 import { bodyBox, overlaps, raycast } from './collision';
 import type { GameInput, GameState } from './game';
-import { targetCentre, targetHitBoxes, WEAPON } from './game';
+import { activeWeaponSpec, targetCentre, targetHitBoxes } from './game';
 import type { GameMap } from './map';
 import { eyeAt, eyePosition, leanRoom, NO_INPUT, PLAYER_TUNING } from './player';
 import type { Vec3 } from './vec';
 import { angleDelta, clamp, length, sub } from './vec';
+import type { WeaponSlot } from './weapon';
+import { getWeaponSpec } from './weapon';
 
 const CELL = 0.4;
 /** Leans shallower than this are not worth taking. */
 const MIN_USEFUL_LEAN = 0.15;
 /** Radians per step the bot may turn. Roughly a quick human flick. */
-const MAX_TURN = 0.12;
+const MAX_TURN = 0.14;
 const AIM_TOLERANCE = 0.004;
 const CLEARANCE = 0.08;
 
@@ -125,12 +128,12 @@ export function createBot(map: GameMap): Bot {
     ),
   );
 
-  function canSee(eye: Vec3, index: number, state: GameState): boolean {
+  function canSee(eye: Vec3, index: number, state: GameState, range: number): boolean {
     const target = map.targets[index];
     if (!target) return false;
     const toTarget = sub(targetCentre(target), eye);
     const distance = length(toTarget);
-    if (distance > WEAPON.range) return false;
+    if (distance > range) return false;
     const direction = {
       x: toTarget.x / distance,
       y: toTarget.y / distance,
@@ -147,28 +150,30 @@ export function createBot(map: GameMap): Bot {
    * Which way to lean to see a target from where the bot stands: 0 if it is visible
    * standing straight, -1 or 1 if only a lean reveals it, null if it cannot be seen.
    */
-  function leanToSee(state: GameState, index: number): -1 | 0 | 1 | null {
+  function leanToSee(state: GameState, index: number, range: number): -1 | 0 | 1 | null {
     const target = map.targets[index];
     if (!target) return null;
     const feet = state.player.position;
     // Judge the lean as it will be once the bot has turned to face the target.
     const yaw = Math.atan2(feet.x - target.position.x, feet.z - target.position.z);
-    if (canSee(eyeAt(feet, yaw, 0), index, state)) return 0;
+    if (canSee(eyeAt(feet, yaw, 0), index, state, range)) return 0;
     for (const side of [-1, 1] as const) {
       const room = leanRoom(feet, yaw, side, map.solids);
       if (room < MIN_USEFUL_LEAN) continue;
-      if (canSee(eyeAt(feet, yaw, side * room), index, state)) return side;
+      if (canSee(eyeAt(feet, yaw, side * room), index, state, range)) return side;
     }
     return null;
   }
 
   return (state) => {
     const { player, weapon } = state;
-    const here = cellAt(map, grid, player.position.x, player.position.z);
-
-    if (weapon.rounds === 0 && weapon.reloadRemaining === 0) {
-      return { ...NO_INPUT, fire: false, reload: true };
-    }
+    const spec = activeWeaponSpec(state);
+    const otherSlot: WeaponSlot = weapon.activeSlot === 'primary' ? 'secondary' : 'primary';
+    const otherSpec = getWeaponSpec(weapon.loadout[otherSlot]);
+    const rawHere = cellAt(map, grid, player.position.x, player.position.z);
+    const here = grid.open[rawHere]
+      ? rawHere
+      : nearestOpenCell(map, grid, player.position.x, player.position.z);
 
     // Prefer a target that can be engaged from here, standing or leaning. Otherwise
     // head for the closest one by walking distance.
@@ -179,7 +184,7 @@ export function createBot(map: GameMap): Bot {
     map.targets.forEach((_, index) => {
       if (state.targetsDown[index]) return;
       if (engage < 0) {
-        const side = leanToSee(state, index);
+        const side = leanToSee(state, index, spec.range);
         if (side !== null) {
           engage = index;
           lean = side;
@@ -192,6 +197,19 @@ export function createBot(map: GameMap): Bot {
       }
     });
 
+    // If out of ammo with a live target in sight and our backup firearm is loaded and
+    // quicker to draw than a full reload, switch slots immediately.
+    if (weapon.rounds === 0 && weapon.reloadRemaining === 0 && weapon.switchRemaining === 0) {
+      if (
+        engage >= 0 &&
+        weapon.slotRounds[otherSlot] > 0 &&
+        otherSpec.equipTime < spec.reloadTime
+      ) {
+        return { ...NO_INPUT, fire: false, reload: false, switchSlot: otherSlot };
+      }
+      return { ...NO_INPUT, fire: false, reload: true };
+    }
+
     const engaged = map.targets[engage];
     if (engaged) {
       // Aim from where the eye really is right now, mid-lean included.
@@ -203,20 +221,26 @@ export function createBot(map: GameMap): Bot {
       // Recoil lifts the real aim, so correct against where the muzzle actually points.
       const pitchError = wantedPitch - (player.pitch + weapon.recoil);
       const onTarget = Math.abs(yawError) < AIM_TOLERANCE && Math.abs(pitchError) < AIM_TOLERANCE;
-      const ready = weapon.aim >= 1 && !weapon.triggerHeld && weapon.cooldown === 0;
+      const canTrigger = spec.fireMode === 'auto' ? true : !weapon.triggerHeld;
+      const ready =
+        weapon.switchRemaining === 0 &&
+        weapon.reloadRemaining === 0 &&
+        weapon.aim >= 1 &&
+        canTrigger &&
+        weapon.cooldown === 0;
       return {
         ...NO_INPUT,
         yawDelta: clamp(yawError, -MAX_TURN, MAX_TURN),
         pitchDelta: clamp(pitchError, -MAX_TURN, MAX_TURN),
         lean,
-        aim: true,
-        fire: onTarget && ready && canSee(eye, engage, state),
+        aim: weapon.switchRemaining === 0 && weapon.reloadRemaining === 0,
+        fire: onTarget && ready && canSee(eye, engage, state, spec.range),
         reload: false,
       };
     }
 
     const field = fields[nearest];
-    if (!field) return { ...NO_INPUT, fire: false, reload: weapon.rounds < WEAPON.magazineSize };
+    if (!field) return { ...NO_INPUT, fire: false, reload: weapon.rounds < spec.magazineSize };
 
     // Step to whichever neighbouring cell is closer to the goal.
     let next = here;
@@ -242,13 +266,16 @@ export function createBot(map: GameMap): Bot {
     const yawDelta = turnToward(player.yaw, wantedYaw);
     const facing = Math.abs(angleDelta(player.yaw + yawDelta, wantedYaw)) < 0.3;
 
+    // Top up between targets rather than running dry in front of the next one.
+    const shouldReload = weapon.rounds < Math.ceil(spec.magazineSize / 2);
+
     return {
       ...NO_INPUT,
       yawDelta,
       pitchDelta: clamp(-player.pitch, -MAX_TURN, MAX_TURN),
       forward: facing ? 1 : 0,
-      // Top up between targets rather than running dry in front of the next one.
-      reload: weapon.rounds < WEAPON.magazineSize / 2,
+      sprint: facing && nextDistance > 6 && !shouldReload && weapon.reloadRemaining === 0,
+      reload: shouldReload,
       fire: false,
     };
   };

@@ -3,10 +3,20 @@ import { createBot } from './bot';
 import { bodyBox, overlaps } from './collision';
 import { SIM_STEP_SECONDS } from './fixedLoop';
 import type { GameEvent, GameInput, GameState } from './game';
-import { createGame, runAccuracyPercent, stepGame, TARGET, targetCentre, WEAPON } from './game';
+import {
+  activeWeaponSpec,
+  createGame,
+  runAccuracyPercent,
+  setGameLoadout,
+  stepGame,
+  TARGET,
+  targetCentre,
+} from './game';
 import type { GameMap } from './map';
 import { shootHouse } from './maps/shootHouse';
 import { eyePosition, NO_INPUT, PLAYER_TUNING } from './player';
+import type { Loadout, WeaponSlot } from './weapon';
+import { M1911, REMINGTON_870 } from './weapon';
 
 const dt = SIM_STEP_SECONDS;
 const idle: GameInput = { ...NO_INPUT, fire: false, reload: false, aim: false };
@@ -55,6 +65,7 @@ describe('stepGame shooting', () => {
     const shot = events.find((event) => event.type === 'shot');
     expect(shot?.hit?.surface).toBe('target');
     expect(shot?.hit?.point.z).toBeCloseTo(-10 + TARGET.thickness / 2, 5);
+    expect(shot?.hits).toHaveLength(1);
   });
 
   it('hits the wall behind when the shot goes over the target', () => {
@@ -66,12 +77,27 @@ describe('stepGame shooting', () => {
   });
 
   it('sends a second quick shot higher than the first', () => {
-    const first = run(createGame(range), { ...idle, fire: true }, 1);
-    const wait = run(first.state, idle, Math.ceil(WEAPON.fireInterval / dt));
+    const start = createGame(range, { primary: 'hk416', secondary: 'm1911' }, 'secondary');
+    const first = run(start, { ...idle, fire: true }, 1);
+    const wait = run(first.state, idle, Math.ceil(M1911.fireInterval / dt));
     const second = run(wait.state, { ...idle, fire: true }, 1);
     const height = (events: GameEvent[]) =>
       events.find((e) => e.type === 'shot')?.hit?.point.y ?? 0;
     expect(height(second.events)).toBeGreaterThan(height(first.events));
+  });
+
+  it('fires 8 buckshot pellets from the Remington 870 and keeps accuracy bounded to 100%', () => {
+    const shotgunGame = createGame(
+      range,
+      { primary: 'remington-870', secondary: 'm1911' },
+      'primary',
+    );
+    const aimed = run(shotgunGame, { ...idle, pitchDelta: pitchToTarget() }, 1);
+    const { state, events } = run(aimed.state, { ...idle, fire: true }, 1);
+    const shot = events.find((e) => e.type === 'shot');
+    expect(shot?.hits).toHaveLength(REMINGTON_870.pellets);
+    expect(state.targetsDown).toEqual([true]);
+    expect(runAccuracyPercent(state.run)).toBe(100);
   });
 
   it('stands the targets back up after the reset delay', () => {
@@ -97,43 +123,77 @@ describe('stepGame shooting', () => {
 });
 
 describe('Shoot House', () => {
-  it('has a clear spawn and clear targets', () => {
+  it('has a clear spawn, clear targets, and >= 1.9 m clear fall space behind every target', () => {
+    expect(shootHouse.targets.length).toBe(14);
     const walls = shootHouse.solids.filter((solid) => solid.material !== 'floor');
     const spots = [shootHouse.spawn.position, ...shootHouse.targets.map((t) => t.position)];
     for (const spot of spots) {
       const body = bodyBox({ ...spot, y: 0.01 }, PLAYER_TUNING.radius, PLAYER_TUNING.height);
       expect(walls.some((solid) => overlaps(body, solid))).toBe(false);
     }
+
+    // Verify 1.9 m rear clearance behind each target plate so falling backward never clips.
+    for (const target of shootHouse.targets) {
+      const backX = -target.facing.x;
+      const backZ = -target.facing.z;
+      const fallBox = {
+        min: {
+          x: Math.min(target.position.x, target.position.x + backX * 1.9) - 0.22,
+          y: 0.05,
+          z: Math.min(target.position.z, target.position.z + backZ * 1.9) - 0.22,
+        },
+        max: {
+          x: Math.max(target.position.x, target.position.x + backX * 1.9) + 0.22,
+          y: 0.9,
+          z: Math.max(target.position.z, target.position.z + backZ * 1.9) + 0.22,
+        },
+      };
+      expect(walls.some((solid) => overlaps(fallBox, solid))).toBe(false);
+    }
   });
 
-  it('can be cleared by the bot using only player inputs', () => {
+  it('can be cleared by the bot using default HK416 + M1911 loadout', () => {
     const { cleared, shots } = botRun(shootHouse, 180);
     expect(cleared).toBe(true);
-    // The bot only fires when on target, so it should not need many spare rounds.
-    expect(shots).toBeLessThanOrEqual(shootHouse.targets.length + 2);
+    expect(shots).toBeLessThanOrEqual(shootHouse.targets.length + 3);
+  });
+
+  it('can be cleared by the bot using the Remington 870 shotgun and AWM sniper', () => {
+    const shotgun = botRun(shootHouse, 180, { primary: 'remington-870', secondary: 'm1911' });
+    expect(shotgun.cleared).toBe(true);
+
+    const sniper = botRun(shootHouse, 180, { primary: 'awm', secondary: 'desert-eagle' });
+    expect(sniper.cleared).toBe(true);
   });
 });
 
-function botRun(map: GameMap, seconds: number) {
+function botRun(
+  map: GameMap,
+  seconds: number,
+  loadout?: Loadout,
+  activeSlot: WeaponSlot = 'primary',
+) {
   const bot = createBot(map);
-  let state = createGame(map);
+  let state = createGame(map, loadout, activeSlot);
   let shots = 0;
   let leaned = false;
+  let switched = false;
   let cleared = false;
   for (let i = 0; i < seconds / dt && !cleared; i++) {
     const step = stepGame(state, bot(state), dt, map);
     state = step.state;
     for (const event of step.events) {
+      if (event.type === 'weapon-switch') switched = true;
       if (event.type !== 'shot') continue;
       shots++;
       leaned ||= Math.abs(state.player.lean) > 0.1;
     }
     cleared = state.targetsDown.every(Boolean);
   }
-  return { state, cleared, shots, leaned };
+  return { state, cleared, shots, leaned, switched };
 }
 
-describe('leaning and aiming in play', () => {
+describe('leaning, aiming, and weapon switching in play', () => {
   /** The range with a wall that hides the target unless the player leans right. */
   const corner: GameMap = {
     ...range,
@@ -174,6 +234,34 @@ describe('leaning and aiming in play', () => {
     }
     expect(state.targetsDown).toEqual([true]);
   });
+
+  it('lets the bot switch to its sidearm when dry in front of a target', () => {
+    let state = createGame(range, { primary: 'awm', secondary: 'm1911' }, 'primary');
+    // Drain the 5-round AWM magazine into the sky so the primary is empty on arrival.
+    state = {
+      ...state,
+      weapon: {
+        ...state.weapon,
+        rounds: 0,
+        slotRounds: { primary: 0, secondary: M1911.magazineSize },
+      },
+    };
+    const bot = createBot(range);
+    let switched = false;
+    for (let i = 0; i < 600 && !state.targetsDown[0]; i++) {
+      const step = stepGame(state, bot(state), dt, range);
+      state = step.state;
+      if (step.events.some((e) => e.type === 'weapon-switch')) switched = true;
+    }
+    expect(switched).toBe(true);
+    expect(state.targetsDown).toEqual([true]);
+  });
+
+  it('swaps loadouts cleanly with setGameLoadout', () => {
+    const start = createGame(range);
+    const next = setGameLoadout(start, { primary: 'scar-h', secondary: 'desert-eagle' }, 'primary');
+    expect(activeWeaponSpec(next).id).toBe('scar-h');
+  });
 });
 
 describe('run telemetry', () => {
@@ -189,7 +277,8 @@ describe('run telemetry', () => {
     expect(missed.state.run.shotsFired).toBe(1);
     expect(missed.state.run.targetHits).toBe(0);
 
-    const cooled = run(missed.state, idle, Math.ceil(WEAPON.fireInterval / dt));
+    const spec = activeWeaponSpec(missed.state);
+    const cooled = run(missed.state, idle, Math.ceil(spec.fireInterval / dt));
     const reAimed = run(cooled.state, { ...idle, pitchDelta: pitchToTarget() - 0.12 }, 1);
     const cleared = run(reAimed.state, { ...idle, fire: true }, 1);
 
