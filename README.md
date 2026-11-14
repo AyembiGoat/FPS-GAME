@@ -16,7 +16,9 @@ npm install
 npm run dev
 ```
 
-Open the printed URL and click to capture the mouse.
+Open the printed URL to see the main menu. Pick a map and mode under **Maps**, then
+**Start game**, then click to capture the mouse. Esc pauses; **Main menu** on the pause
+screen goes back to the menu.
 
 | Input              | Action              |
 | ------------------ | ------------------- |
@@ -30,7 +32,7 @@ Open the printed URL and click to capture the mouse.
 | Left Shift         | Sprint              |
 | Esc                | Pause               |
 
-Add `?bot` to the URL to watch the bot play.
+Add `?bot` to the URL to watch the bot play, skipping the menu.
 
 ## Commands
 
@@ -47,6 +49,11 @@ Add `?bot` to the URL to watch the bot play.
 
 `npm run check` is the gate. CI runs the same steps on every pull request
 (`.github/workflows/ci.yml`).
+
+`node scripts/menu-preview.mjs` opens the menu in the same headless browser, visits
+every section, and saves screenshots to `menu-preview/`. It also checks that the name
+survives a reload, that a cleared map is recorded as a run, and that starting and
+leaving the game work.
 
 ## Stack
 
@@ -66,11 +73,11 @@ Add `?bot` to the URL to watch the bot play.
 src/
   core/       Game rules: movement, collision, weapon, targets, bot. Pure and unit tested
   core/maps/  Levels, as data
-  game/       Browser shell: rendering, input, HUD
+  game/       Browser shell: rendering, input, HUD, main menu
   game/materials/  The shared texture library
   game/weapons/    Gun models and the arms that hold them
   game/audio/      Sound
-scripts/      Headless-browser playtest
+scripts/      Headless-browser playtest and menu check
 reference/    The reference images the visuals were built from
 .agents/      Playbooks (skills) for AI agents, indexed in skills.md
 AGENTS.md     Rules and architecture for anyone changing the code

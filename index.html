@@ -92,6 +92,209 @@
         margin: 0;
         font-size: 17px;
       }
+      #overlay-menu {
+        margin-top: 16px;
+        padding: 8px 16px;
+        background: transparent;
+        color: #fff;
+        border: 1px solid #fff;
+        font: inherit;
+        font-size: 15px;
+        cursor: pointer;
+      }
+      #menu {
+        position: fixed;
+        inset: 0;
+        z-index: 20;
+        display: flex;
+        background: #000;
+        color: #fff;
+      }
+      #menu-nav {
+        width: 220px;
+        flex: none;
+        padding: 24px 16px;
+        border-right: 1px solid #444;
+        box-sizing: border-box;
+      }
+      .menu-title {
+        margin: 0 0 24px;
+        font-size: 15px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        opacity: 0.6;
+      }
+      .menu-nav-item {
+        display: block;
+        width: 100%;
+        margin: 0 0 8px;
+        padding: 10px 14px;
+        box-sizing: border-box;
+        background: transparent;
+        color: #fff;
+        border: 1px solid transparent;
+        font: inherit;
+        font-size: 16px;
+        text-align: left;
+        cursor: pointer;
+      }
+      .menu-nav-item:hover {
+        border-color: #444;
+      }
+      .menu-nav-item.is-selected {
+        background: #fff;
+        color: #000;
+      }
+      .menu-who {
+        margin: 24px 0 0;
+        font-size: 14px;
+        opacity: 0.6;
+      }
+      #menu-content {
+        flex: 1;
+        overflow-y: auto;
+        padding: 24px;
+        box-sizing: border-box;
+      }
+      #menu-content > * {
+        max-width: 760px;
+      }
+      #menu h2 {
+        margin: 0 0 20px;
+        font-size: 24px;
+        font-weight: 600;
+      }
+      #menu h3 {
+        margin: 0 0 12px;
+        font-size: 18px;
+        font-weight: 600;
+      }
+      #menu h4 {
+        margin: 0 0 8px;
+        font-size: 14px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        opacity: 0.8;
+      }
+      .menu-box {
+        border: 1px solid #555;
+        padding: 16px;
+        margin-bottom: 16px;
+      }
+      .menu-button {
+        display: inline-block;
+        margin: 0 8px 8px 0;
+        padding: 8px 14px;
+        background: transparent;
+        color: #fff;
+        border: 1px solid #666;
+        font: inherit;
+        font-size: 15px;
+        cursor: pointer;
+      }
+      .menu-button:hover:not(:disabled) {
+        border-color: #fff;
+      }
+      .menu-button.is-selected {
+        background: #fff;
+        color: #000;
+      }
+      .menu-button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      .menu-start {
+        margin: 0;
+        padding: 12px 24px;
+        font-size: 16px;
+      }
+      .menu-tag {
+        display: inline-block;
+        margin-right: 10px;
+        padding: 2px 8px;
+        border: 1px solid #777;
+        font-size: 12px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        white-space: nowrap;
+      }
+      .menu-pending {
+        display: flex;
+        align-items: baseline;
+        margin: 0 0 16px;
+        padding: 8px 10px;
+        border-left: 2px solid #777;
+        background: #141414;
+        font-size: 13px;
+        line-height: 1.5;
+      }
+      .menu-choice {
+        margin: 0 0 18px;
+      }
+      .menu-choice h4 {
+        margin: 0 0 8px;
+      }
+      .menu-buttons {
+        display: flex;
+        flex-wrap: wrap;
+      }
+      .menu-pairs {
+        display: grid;
+        grid-template-columns: 180px 1fr;
+        gap: 8px 20px;
+        margin: 0 0 12px;
+        font-size: 15px;
+      }
+      .menu-pairs dt {
+        opacity: 0.7;
+      }
+      .menu-pairs dd {
+        margin: 0;
+      }
+      .menu-value {
+        margin: 0 0 12px;
+        font-size: 18px;
+      }
+      .menu-row {
+        display: flex;
+        align-items: center;
+      }
+      .menu-row .menu-note {
+        margin: 0;
+      }
+      .menu-note {
+        margin: 0 0 12px;
+        font-size: 14px;
+        opacity: 0.75;
+      }
+      .menu-display {
+        border: 1px solid #555;
+        padding: 24px;
+        margin-bottom: 12px;
+        text-align: center;
+        font-size: 16px;
+      }
+      #menu table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 15px;
+      }
+      #menu th,
+      #menu td {
+        padding: 6px 8px;
+        border-bottom: 1px solid #444;
+        text-align: left;
+      }
+      #menu input[type='text'] {
+        padding: 8px;
+        margin-right: 8px;
+        background: #111;
+        color: #fff;
+        border: 1px solid #666;
+        font: inherit;
+        font-size: 15px;
+      }
       [hidden] {
         display: none !important;
       }
@@ -135,8 +338,13 @@
           <dt>Pause</dt>
           <dd>Esc</dd>
         </dl>
-        <p>Click to play</p>
+        <p id="overlay-prompt">Click to play</p>
+        <button id="overlay-menu" type="button">Main menu</button>
       </div>
+    </div>
+    <div id="menu" hidden>
+      <nav id="menu-nav" aria-label="Menu"></nav>
+      <div id="menu-content"></div>
     </div>
     <script type="module" src="/src/game/main.ts"></script>
   </body>
