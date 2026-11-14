@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FPS Game</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+        background: #0b0d12;
+        font-family: system-ui, sans-serif;
+      }
+      canvas {
+        display: block;
+      }
+      #overlay {
+        position: fixed;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        color: #fff;
+        background: rgb(0 0 0 / 55%);
+        cursor: pointer;
+        text-align: center;
+        line-height: 1.6;
+      }
+      #overlay[hidden] {
+        display: none;
+      }
+      #crosshair {
+        position: fixed;
+        left: 50%;
+        top: 50%;
+        width: 4px;
+        height: 4px;
+        margin: -2px;
+        border-radius: 50%;
+        background: #fff;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="crosshair"></div>
+    <div id="overlay">
+      <div>
+        <strong>Click to play</strong><br />
+        WASD to move, mouse to look, Space to jump, Shift to sprint, Esc to release
+      </div>
+    </div>
+    <script type="module" src="/src/game/main.ts"></script>
+  </body>
+</html>
