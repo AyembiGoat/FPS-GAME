@@ -104,6 +104,7 @@ function play(mode: 'auto' | 'bot' | 'play') {
       // The game is paused whenever the mouse is not captured.
       const running = mode === 'bot' || human.locked();
       human.setZoom(view.zoom());
+      if (running) view.adapt(elapsed);
       const alpha = running
         ? loop.advance(elapsed, () => step(mode === 'bot' ? bot(state) : human.sample()))
         : 1;

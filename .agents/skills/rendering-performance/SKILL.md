@@ -46,3 +46,19 @@ garbage collection pauses. Report the numbers and the scene they were taken in.
 
 `npm run check` verifies none of this. Run the dev server, look at the result, and
 watch the frame rate while moving through the heaviest part of the scene.
+
+## What the renderer already does to stay fast
+
+Keep these working when you change `src/game/view.ts` or `src/game/world.ts`:
+
+- **Shadows are redrawn only when a shadow caster moves.** Targets report when they
+  are moving. Anything new that moves and casts a shadow must do the same, or its
+  shadow will stay where it started.
+- **The sky is painted once** onto a cube at start-up. If the sky ever has to change
+  (time of day, moving clouds), repaint it then, not every frame.
+- **Resolution adapts.** After a run of slow frames the game draws fewer pixels, and
+  sharpens again after a long smooth spell. The cost of a frame is almost entirely the
+  number of pixels drawn, so anything that draws the full screen again (a new pass,
+  post-processing) is the expensive kind of change.
+- **Shaders are built at start-up**, including those of objects that start hidden. An
+  effect whose material is created later will freeze the game the first time it shows.

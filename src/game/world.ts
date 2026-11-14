@@ -72,7 +72,8 @@ const FALLEN_ANGLE = -Math.PI / 2 + 0.03;
 export interface TargetView {
   /** Start falling over, or stand back up. */
   setDown(down: boolean): void;
-  update(dt: number): void;
+  /** Advance the falling animation. Returns true while the plate is moving. */
+  update(dt: number): boolean;
 }
 
 function buildTargets(map: GameMap, scene: THREE.Scene): TargetView[] {
@@ -122,8 +123,9 @@ function buildTargets(map: GameMap, scene: THREE.Scene): TargetView[] {
         speed = value ? -5 : 0;
       },
       update(dt) {
+        const before = hinge.rotation.x;
         if (down) {
-          if (hinge.rotation.x === FALLEN_ANGLE && speed === 0) return;
+          if (hinge.rotation.x === FALLEN_ANGLE && speed === 0) return false;
           speed -= 22 * dt;
           hinge.rotation.x += speed * dt;
           if (hinge.rotation.x <= FALLEN_ANGLE) {
@@ -134,6 +136,7 @@ function buildTargets(map: GameMap, scene: THREE.Scene): TargetView[] {
         } else if (hinge.rotation.x < 0) {
           hinge.rotation.x = Math.min(0, hinge.rotation.x + 4 * dt);
         }
+        return hinge.rotation.x !== before;
       },
     };
   });
@@ -169,15 +172,23 @@ export function buildSky(renderer: THREE.WebGLRenderer) {
   set('cloudCoverage', 0.32);
   set('cloudDensity', 0.35);
   (uniforms.sunPosition?.value as THREE.Vector3 | undefined)?.copy(sunDirection);
-  scene.add(sky);
+  const skyOnly = new THREE.Scene();
+  skyOnly.add(sky);
+
+  // The sky never changes, and working it out for every pixel of every frame is the
+  // most expensive thing on screen. Paint it once onto the inside of a cube and show
+  // that picture from then on.
+  const painted = new THREE.WebGLCubeRenderTarget(1024, { type: THREE.HalfFloatType });
+  new THREE.CubeCamera(1, 5000, painted).update(renderer, skyOnly);
+  scene.background = painted.texture;
 
   // Light the scene from the sky itself, so shaded surfaces pick up its colour.
   const pmrem = new THREE.PMREMGenerator(renderer);
-  const skyOnly = new THREE.Scene();
-  skyOnly.add(sky.clone());
   scene.environment = pmrem.fromScene(skyOnly, 0, 1, 5000).texture;
   scene.environmentIntensity = 0.28;
   pmrem.dispose();
+  sky.geometry.dispose();
+  sky.material.dispose();
 
   // Warm fill: light bouncing off the sunlit concrete, which the sky alone does not give.
   scene.add(new THREE.HemisphereLight(0x9c8f7e, 0xc9a67a, 1.0));
@@ -185,7 +196,7 @@ export function buildSky(renderer: THREE.WebGLRenderer) {
   const sun = new THREE.DirectionalLight(0xffd3a1, 4.6);
   sun.position.copy(sunDirection).multiplyScalar(60);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(4096, 4096);
+  sun.shadow.mapSize.set(2048, 2048);
   const shadowCamera = sun.shadow.camera;
   shadowCamera.left = -24;
   shadowCamera.right = 24;

@@ -192,7 +192,7 @@ export function buildM1911(): WeaponModel {
     // The left hand closes over the firing hand's fingers, one finger lower, so the box
     // it holds is the grip plus a finger's thickness on the front and on each side.
     support: {
-      anchor: anchor(grip, [0, -0.0185, -FINGER / 2 - 0.002], [0, 0.1, 0]),
+      anchor: anchor(grip, [0, -0.006, -FINGER / 2 - 0.002], [0, 0.1, 0]),
       size: [GRIP_SIZE[0] + FINGER * 2 + 0.008, GRIP_SIZE[1] + FINGER + 0.004],
       thumb: 'alongside',
     },

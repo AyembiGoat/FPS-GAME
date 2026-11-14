@@ -14,6 +14,12 @@ const FIELD_OF_VIEW = 78;
 /** Metres between footsteps. */
 const STRIDE = 1.9;
 const MUZZLE_LIGHT_SECONDS = 0.05;
+/** Rendered pixels per screen pixel: the most used, the least, and the step between. */
+const MAX_RESOLUTION = Math.min(window.devicePixelRatio, 1.5);
+const MIN_RESOLUTION = 0.6;
+const RESOLUTION_STEP = 0.85;
+/** A frame longer than this (about 45 a second) counts as slow. */
+const SLOW_FRAME_SECONDS = 0.022;
 /** Radians the view rolls at full lean. */
 const LEAN_ROLL = 0.15;
 
@@ -25,9 +31,21 @@ function zoomedFieldOfView(zoom: number): number {
 
 /** Everything the player sees and hears. Reads simulation state; never changes it. */
 export function createView(map: GameMap, audio: GameAudio) {
-  const renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  // Ask for the fast graphics card on laptops that have two.
+  const renderer = new THREE.WebGLRenderer({
+    antialias: true,
+    powerPreference: 'high-performance',
+  });
+  let resolution = MAX_RESOLUTION;
+  renderer.setPixelRatio(resolution);
   renderer.shadowMap.enabled = true;
+  // Nearly everything that casts a shadow stands still, so shadows are redrawn only
+  // while a target is falling or getting up, not every frame.
+  renderer.shadowMap.autoUpdate = false;
+  let shadowsStale = true;
+  let slowSeconds = 0;
+  let smoothSeconds = 0;
+  let secondsBeforeRaising = 8;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 0.5;
   // The gun is drawn in a second pass over the world, so clearing is done by hand.
@@ -44,6 +62,23 @@ export function createView(map: GameMap, audio: GameAudio) {
 
   const muzzleLight = new THREE.PointLight(0xffc98a, 0, 9, 2);
   world.scene.add(muzzleLight);
+
+  // Build every shader now. Otherwise the first shot, the first bullet hole and the
+  // first dust puff each freeze the game for a moment while theirs is built.
+  for (const [scene, lens] of [
+    [world.scene, camera],
+    [viewmodel.scene, viewmodel.camera],
+  ] as const) {
+    const hidden: THREE.Object3D[] = [];
+    scene.traverse((object) => {
+      if (!object.visible) {
+        hidden.push(object);
+        object.visible = true;
+      }
+    });
+    renderer.compile(scene, lens);
+    for (const object of hidden) object.visible = false;
+  }
   let muzzleLightTime = 0;
 
   // Landing pushes the camera down; a spring brings it back.
@@ -81,6 +116,38 @@ export function createView(map: GameMap, audio: GameAudio) {
 
   return {
     canvas: renderer.domElement,
+
+    /**
+     * Keep the game smooth on slower machines. Call once per displayed frame with how
+     * long that frame took. After a run of slow frames the picture is drawn with fewer
+     * pixels; after a long smooth spell it is sharpened again, more cautiously each
+     * time it has had to back off.
+     */
+    adapt(frameSeconds: number) {
+      // A very long frame is the tab being hidden or the page loading, not a slow machine.
+      if (frameSeconds > 0.2) return;
+      if (frameSeconds > SLOW_FRAME_SECONDS) {
+        slowSeconds += frameSeconds;
+        smoothSeconds = 0;
+      } else {
+        smoothSeconds += frameSeconds;
+        slowSeconds = Math.max(0, slowSeconds - frameSeconds);
+      }
+
+      let wanted = resolution;
+      if (slowSeconds > 0.6) {
+        wanted = Math.max(MIN_RESOLUTION, resolution * RESOLUTION_STEP);
+        slowSeconds = 0;
+        secondsBeforeRaising *= 2;
+      } else if (smoothSeconds > secondsBeforeRaising) {
+        wanted = Math.min(MAX_RESOLUTION, resolution / RESOLUTION_STEP);
+        smoothSeconds = 0;
+      }
+      if (wanted !== resolution) {
+        resolution = wanted;
+        renderer.setPixelRatio(resolution);
+      }
+    },
 
     /** Current magnification, so mouse speed can be scaled to match. */
     zoom: () => zoom,
@@ -218,7 +285,9 @@ export function createView(map: GameMap, audio: GameAudio) {
       muzzleLight.intensity = muzzleLightTime > 0 ? 14 : 0;
       muzzleLight.position.copy(camera.position);
 
-      for (const target of world.targets) target.update(dt);
+      for (const target of world.targets) {
+        if (target.update(dt)) shadowsStale = true;
+      }
       effects.update(dt);
       hud.update(dt, {
         rounds: state.weapon.rounds,
@@ -229,6 +298,10 @@ export function createView(map: GameMap, audio: GameAudio) {
       });
 
       if (!draw) return;
+      if (shadowsStale) {
+        renderer.shadowMap.needsUpdate = true;
+        shadowsStale = false;
+      }
       renderer.clear();
       renderer.render(world.scene, camera);
       renderer.clearDepth();
