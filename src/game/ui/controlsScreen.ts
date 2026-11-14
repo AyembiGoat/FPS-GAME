@@ -38,6 +38,10 @@ const CONTROL_SECTIONS: readonly ControlSectionSpec[] = [
         action: 'Aim / Scope (Hold or Toggle)',
         bindings: [{ kind: 'mouse', button: 'right', label: 'Right Click' }],
       },
+      {
+        action: 'Toggle Variable Scope Zoom (LPVO / Sniper)',
+        bindings: [{ kind: 'key', label: 'V' }],
+      },
       { action: 'Reload Magazine', bindings: [{ kind: 'key', label: 'R' }] },
       { action: 'Equip Primary Weapon', bindings: [{ kind: 'key', label: '1' }] },
       { action: 'Equip Secondary Weapon', bindings: [{ kind: 'key', label: '2' }] },

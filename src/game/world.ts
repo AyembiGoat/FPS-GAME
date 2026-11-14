@@ -410,7 +410,7 @@ export function buildSky(renderer: THREE.WebGLRenderer) {
   const skyOnly = new THREE.Scene();
   skyOnly.add(sky);
 
-  const painted = new THREE.WebGLCubeRenderTarget(1024, { type: THREE.HalfFloatType });
+  const painted = new THREE.WebGLCubeRenderTarget(512, { type: THREE.HalfFloatType });
   new THREE.CubeCamera(1, 5000, painted).update(renderer, skyOnly);
   scene.background = painted.texture;
 
@@ -426,7 +426,7 @@ export function buildSky(renderer: THREE.WebGLRenderer) {
   const sun = new THREE.DirectionalLight(0xffd3a1, 4.6);
   sun.position.copy(sunDirection).multiplyScalar(70);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.mapSize.set(1024, 1024);
   const shadowCamera = sun.shadow.camera;
   // Wide ±36 m frustum cleanly covers the entire 52 m × 40 m Shoot House with crisp shadows.
   shadowCamera.left = -36;
@@ -435,8 +435,8 @@ export function buildSky(renderer: THREE.WebGLRenderer) {
   shadowCamera.bottom = -36;
   shadowCamera.near = 15;
   shadowCamera.far = 135;
-  sun.shadow.bias = -0.0004;
-  sun.shadow.normalBias = 0.03;
+  sun.shadow.bias = -0.0005;
+  sun.shadow.normalBias = 0.035;
   scene.add(sun);
 
   scene.fog = new THREE.Fog(0xe2d3bb, 65, 620);

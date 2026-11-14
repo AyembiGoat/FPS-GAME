@@ -99,7 +99,7 @@ function texture(
   result.colorSpace = colour ? THREE.SRGBColorSpace : THREE.NoColorSpace;
   result.wrapS = THREE.RepeatWrapping;
   result.wrapT = THREE.RepeatWrapping;
-  result.anisotropy = 8;
+  result.anisotropy = 4;
   return result;
 }
 

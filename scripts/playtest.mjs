@@ -178,7 +178,7 @@ if (args.includes('--materials')) {
         Boolean(sgShot && sgShot.hits.length >= 1),
       );
 
-      // 8. AWM Sniper Rifle + 6x Telescopic Scope + East 38m Sniper Lane + Scoped Lean
+      // 8. AWM Sniper Rifle + 6x -> 10x Variable Telescopic Scope + East 38m Lane + Scoped Lean
       await game.page.evaluate(() => {
         window.__fps.equipWeapon('awm', 'primary');
         // Stand at the mouth of the East 38m Sniper Lane looking straight downrange!
@@ -192,9 +192,64 @@ if (args.includes('--materials')) {
       summary.awmZoom = awmZoom;
       check('AWM telescopic scope zooms >= 5.5x', awmZoom >= 5.5);
 
+      // Toggle variable magnification (V) from 6x -> 10x!
+      await game.step({ aim: true, toggleZoom: true }, 1);
+      await game.step({ aim: true }, 24);
+      const awmZoomHigh = await game.zoom();
+      summary.awmZoomHigh = awmZoomHigh;
+      check('AWM variable zoom toggles cleanly to ~10x', awmZoomHigh >= 9.2);
+      await shot('22b-awm-scoped-10x');
+      await game.step({ aim: true, toggleZoom: true }, 1);
+      await game.step({ aim: true }, 20);
+
       await game.step({ aim: true, lean: -1 }, 24);
       await shot('22-awm-scoped-lean-left');
       await game.step({}, 35);
+
+      // 8b. SCAR-H Trijicon ACOG 3.5x glowing green chevron + BDC scope
+      await game.page.evaluate(() => {
+        window.__fps.equipWeapon('scar-h', 'primary');
+        window.__fps.setOptic('scar-h', 'acog');
+        window.__fps.place({ x: 18.5, y: 0, z: 16.5 }, 0, 0);
+      });
+      await game.step({ aim: true }, 32);
+      const acogZoom = await game.zoom();
+      summary.acogZoom = acogZoom;
+      check('SCAR-H ACOG scope zooms to ~3.5x', acogZoom >= 3.2 && acogZoom <= 3.8);
+      await shot('24-scar-h-acog-35x');
+      await game.step({}, 25);
+
+      // 8c. HK416 Razor HD LPVO 2x <-> 5x variable scope
+      await game.page.evaluate(() => {
+        window.__fps.equipWeapon('hk416', 'primary');
+        window.__fps.setOptic('hk416', 'lpvo');
+        window.__fps.place({ x: 18.5, y: 0, z: 16.5 }, 0, 0);
+      });
+      await game.step({ aim: true }, 32);
+      const lpvoLow = await game.zoom();
+      await shot('25-hk416-lpvo-2x');
+      await game.step({ aim: true, toggleZoom: true }, 1);
+      await game.step({ aim: true }, 24);
+      const lpvoHigh = await game.zoom();
+      summary.lpvoZoom = [lpvoLow, lpvoHigh];
+      check('HK416 LPVO toggles cleanly 2x -> 5x', lpvoLow >= 1.85 && lpvoHigh >= 4.6);
+      await shot('26-hk416-lpvo-5x');
+      await game.page.evaluate(() => window.__fps.setOptic('hk416', 'holo'));
+      await game.step({}, 25);
+
+      // 8d. MP5 Aimpoint Micro T-2 Red Dot 3D ADS sight picture
+      await game.page.evaluate(() => {
+        window.__fps.equipWeapon('mp5', 'primary');
+        window.__fps.setOptic('mp5', 'red-dot');
+        window.__fps.place({ x: -12.5, y: 0, z: 11.5 }, 0.25, 0);
+      });
+      await game.step({ aim: true }, 24);
+      await shot('27-mp5-red-dot-ads');
+      await game.step({}, 20);
+
+      // Capture live WebGL draw call & memory telemetry to verify anti-lag batching!
+      summary.renderStats = await game.page.evaluate(() => window.__fps.renderStats());
+      check('batched rendering stays lean (<= 65 draw calls)', summary.renderStats.calls <= 65);
 
       // 9. West Breach House Interior Shot (AK-47)
       await game.page.evaluate(() => {

@@ -1,8 +1,8 @@
 import type { GameState } from '../../core/game';
 import { activeWeaponSpec, runAccuracyPercent, TARGET } from '../../core/game';
 import { PLAYER_TUNING } from '../../core/player';
-import type { WeaponId, WeaponSlot } from '../../core/weapon';
-import { getWeaponSpec } from '../../core/weapon';
+import type { OpticId, ScopeOverlayKind, WeaponId, WeaponSlot } from '../../core/weapon';
+import { getWeaponSpec, OPTICS } from '../../core/weapon';
 import type { ScopeOverlayState } from '../view';
 import { el, formatRunTime } from './dom';
 import { createIcon, createWeaponSilhouette } from './icons';
@@ -38,85 +38,226 @@ interface FeedEntry {
   leaving: boolean;
 }
 
-/** Build the AWM 6× First-Focal-Plane Mil-Dot telescopic sniper scope HUD overlay. */
-function buildTelescopicScopeOverlay(): {
+function svgEl<K extends keyof SVGElementTagNameMap>(
+  tag: K,
+  attrs: Record<string, string>,
+): SVGElementTagNameMap[K] {
+  const node = document.createElementNS(SVG_NS, tag);
+  for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+  return node;
+}
+
+/**
+ * Multi-optic magnified scope overlay supporting three authentic real-world reticles:
+ *  - `acog`   (Trijicon TA31 3.5×): glowing green tritium chevron apex + BDC drop stadia
+ *  - `lpvo`   (Razor HD 2× / 5×): thin bezel, illuminated red-amber horseshoe + 0.5 MOA dot + windage
+ *  - `sniper` (PM II 6× / 10× FFP): heavy duplex stadia + Mil-Dot holdover grid + center dot
+ */
+function buildScopeOverlay(): {
   root: HTMLElement;
   reticleSvg: SVGSVGElement;
   zoomTag: HTMLElement;
+  zoomHint: HTMLElement;
+  setStyle(style: ScopeOverlayKind): void;
 } {
   const root = el('div', 'hud-scope');
   root.dataset.active = 'false';
+  root.dataset.style = 'sniper';
 
-  // Radial vignette + circular scope aperture mask via crisp SVG.
   const reticleSvg = document.createElementNS(SVG_NS, 'svg');
   reticleSvg.setAttribute('viewBox', '0 0 1000 1000');
   reticleSvg.setAttribute('class', 'hud-scope__reticle');
   reticleSvg.setAttribute('aria-hidden', 'true');
 
-  // Subtle dark outer glass bevel ring inside aperture.
-  const lensRim = document.createElementNS(SVG_NS, 'circle');
-  lensRim.setAttribute('cx', '500');
-  lensRim.setAttribute('cy', '500');
-  lensRim.setAttribute('r', '468');
-  lensRim.setAttribute('fill', 'none');
-  lensRim.setAttribute('stroke', 'rgba(8, 11, 16, 0.92)');
-  lensRim.setAttribute('stroke-width', '28');
+  // --- 1. ACOG TA31 3.5× (Glowing Green Chevron + BDC Stadia Ladder) ---
+  const acogGroup = svgEl('g', { class: 'hud-scope__group' });
+  acogGroup.append(
+    svgEl('circle', {
+      cx: '500',
+      cy: '500',
+      r: '454',
+      fill: 'none',
+      stroke: 'rgba(10, 14, 18, 0.96)',
+      'stroke-width': '34',
+    }),
+    svgEl('circle', {
+      cx: '500',
+      cy: '500',
+      r: '437',
+      fill: 'none',
+      stroke: 'rgba(120, 235, 160, 0.16)',
+      'stroke-width': '2',
+    }),
+    // Outer black horizontal framing stadia bars.
+    svgEl('path', {
+      d: 'M 75 500 H 335 M 665 500 H 925 M 500 725 V 925',
+      stroke: '#0a0e13',
+      'stroke-width': '4.2',
+    }),
+    // Fine vertical BDC spine below the chevron apex (500, 500 is exact point of aim!).
+    svgEl('path', {
+      d: 'M 500 532 V 725 M 472 560 H 528 M 480 605 H 520 M 485 650 H 515 M 490 695 H 510',
+      stroke: 'rgba(12, 16, 22, 0.92)',
+      'stroke-width': '2.2',
+    }),
+    // Fine horizontal windage subtensions.
+    svgEl('path', {
+      d: 'M 385 492 V 508 M 425 494 V 506 M 575 494 V 506 M 615 492 V 508',
+      stroke: 'rgba(12, 16, 22, 0.85)',
+      'stroke-width': '2',
+    }),
+    // Iconic Trijicon glowing green tritium chevron (tip dead-centre at (500, 500)!).
+    svgEl('path', {
+      d: 'M 476 524 L 500 500 L 524 524',
+      fill: 'none',
+      stroke: '#4cff72',
+      'stroke-width': '5.2',
+      'stroke-linejoin': 'miter',
+      'stroke-linecap': 'square',
+    }),
+    svgEl('circle', {
+      cx: '500',
+      cy: '500',
+      r: '2.2',
+      fill: '#d8ffe2',
+    }),
+  );
 
-  const glassEdge = document.createElementNS(SVG_NS, 'circle');
-  glassEdge.setAttribute('cx', '500');
-  glassEdge.setAttribute('cy', '500');
-  glassEdge.setAttribute('r', '452');
-  glassEdge.setAttribute('fill', 'none');
-  glassEdge.setAttribute('stroke', 'rgba(180, 210, 232, 0.14)');
-  glassEdge.setAttribute('stroke-width', '2');
+  // --- 2. Razor HD LPVO 2× / 5× (Ultra-thin Bezel + Illuminated Horseshoe & BDC) ---
+  const lpvoGroup = svgEl('g', { class: 'hud-scope__group' });
+  const lpvoTicks: string[] = [];
+  for (let i = 1; i <= 4; i++) {
+    const off = i * 48;
+    lpvoTicks.push(`M ${500 - off} 493 V 507 M ${500 + off} 493 V 507`);
+    lpvoTicks.push(`M ${500 - (14 - i * 2)} ${500 + off} H ${500 + (14 - i * 2)}`);
+  }
+  lpvoGroup.append(
+    svgEl('circle', {
+      cx: '500',
+      cy: '500',
+      r: '472',
+      fill: 'none',
+      stroke: 'rgba(10, 12, 16, 0.96)',
+      'stroke-width': '16',
+    }),
+    svgEl('circle', {
+      cx: '500',
+      cy: '500',
+      r: '463',
+      fill: 'none',
+      stroke: 'rgba(235, 185, 110, 0.16)',
+      'stroke-width': '1.8',
+    }),
+    // Slim clean JM-1 / MRAD tactical crosshair.
+    svgEl('path', {
+      d: 'M 42 500 H 460 M 540 500 H 958 M 500 540 V 958 M 500 180 V 456',
+      stroke: 'rgba(12, 16, 22, 0.88)',
+      'stroke-width': '2.1',
+    }),
+    svgEl('path', {
+      d: lpvoTicks.join(' '),
+      stroke: 'rgba(14, 18, 24, 0.88)',
+      'stroke-width': '2',
+    }),
+    // Illuminated amber-red CQB horseshoe ring (open bottom at 6 o'clock for BDC sightline).
+    svgEl('path', {
+      d: 'M 476 530 A 38 38 0 1 1 524 530',
+      fill: 'none',
+      stroke: '#ff4226',
+      'stroke-width': '4.4',
+      'stroke-linecap': 'round',
+    }),
+    // Crisp central illuminated micro-dot dead-centre at (500, 500).
+    svgEl('circle', {
+      cx: '500',
+      cy: '500',
+      r: '3.6',
+      fill: '#ff4226',
+    }),
+  );
 
-  // Heavy outer duplex stadia posts (9, 3, 6 o'clock; thin 12 o'clock stadia).
-  const heavyPosts = document.createElementNS(SVG_NS, 'path');
-  heavyPosts.setAttribute('d', 'M 48 500 H 255 M 745 500 H 952 M 500 745 V 952');
-  heavyPosts.setAttribute('stroke', '#0c0f14');
-  heavyPosts.setAttribute('stroke-width', '6.5');
-
-  // Fine precision inner crosshair hairs.
-  const fineHairs = document.createElementNS(SVG_NS, 'path');
-  fineHairs.setAttribute('d', 'M 255 500 H 484 M 516 500 H 745 M 500 140 V 484 M 500 516 V 745');
-  fineHairs.setAttribute('stroke', 'rgba(12, 16, 22, 0.92)');
-  fineHairs.setAttribute('stroke-width', '1.8');
-
-  // Mil-dot stadia hash marks along horizontal & vertical holdover axes.
-  const ticks: string[] = [];
+  // --- 3. PM II Sniper Scope 6× / 10× FFP Mil-Dot ---
+  const sniperGroup = svgEl('g', { class: 'hud-scope__group' });
+  const sniperTicks: string[] = [];
   for (let i = 1; i <= 5; i++) {
     const off = i * 44;
     const len = i % 2 === 0 ? 11 : 7;
-    ticks.push(`M ${500 - off} ${500 - len} V ${500 + len}`);
-    ticks.push(`M ${500 + off} ${500 - len} V ${500 + len}`);
-    ticks.push(`M ${500 - len} ${500 + off} H ${500 + len}`);
-    if (i <= 3) ticks.push(`M ${500 - len} ${500 - off} H ${500 + len}`);
+    sniperTicks.push(`M ${500 - off} ${500 - len} V ${500 + len}`);
+    sniperTicks.push(`M ${500 + off} ${500 - len} V ${500 + len}`);
+    sniperTicks.push(`M ${500 - len} ${500 + off} H ${500 + len}`);
+    if (i <= 3) sniperTicks.push(`M ${500 - len} ${500 - off} H ${500 + len}`);
   }
-  const stadia = document.createElementNS(SVG_NS, 'path');
-  stadia.setAttribute('d', ticks.join(' '));
-  stadia.setAttribute('stroke', 'rgba(14, 18, 24, 0.9)');
-  stadia.setAttribute('stroke-width', '2');
+  sniperGroup.append(
+    svgEl('circle', {
+      cx: '500',
+      cy: '500',
+      r: '468',
+      fill: 'none',
+      stroke: 'rgba(8, 11, 16, 0.94)',
+      'stroke-width': '28',
+    }),
+    svgEl('circle', {
+      cx: '500',
+      cy: '500',
+      r: '452',
+      fill: 'none',
+      stroke: 'rgba(180, 210, 232, 0.14)',
+      'stroke-width': '2',
+    }),
+    svgEl('path', {
+      d: 'M 48 500 H 255 M 745 500 H 952 M 500 745 V 952',
+      stroke: '#0c0f14',
+      'stroke-width': '6.5',
+    }),
+    svgEl('path', {
+      d: 'M 255 500 H 484 M 516 500 H 745 M 500 140 V 484 M 500 516 V 745',
+      stroke: 'rgba(12, 16, 22, 0.92)',
+      'stroke-width': '1.8',
+    }),
+    svgEl('path', {
+      d: sniperTicks.join(' '),
+      stroke: 'rgba(14, 18, 24, 0.9)',
+      'stroke-width': '2',
+    }),
+    svgEl('circle', {
+      cx: '500',
+      cy: '500',
+      r: '4.2',
+      fill: '#ff3a2c',
+    }),
+  );
 
-  // Illuminated central precision micro-dot (dead centre on (500, 500) = firing ray!).
-  const centerGlow = document.createElementNS(SVG_NS, 'circle');
-  centerGlow.setAttribute('cx', '500');
-  centerGlow.setAttribute('cy', '500');
-  centerGlow.setAttribute('r', '4.2');
-  centerGlow.setAttribute('fill', '#ff3a2c');
+  reticleSvg.append(acogGroup, lpvoGroup, sniperGroup);
 
-  reticleSvg.append(lensRim, glassEdge, heavyPosts, fineHairs, stadia, centerGlow);
-
+  const zoomHud = el('div', 'hud-scope__readout');
   const zoomTag = el('span', 'hud-scope__zoom', '6.0× FFP');
-  root.append(reticleSvg, zoomTag);
-  return { root, reticleSvg, zoomTag };
+  const zoomHint = el('span', 'hud-scope__hint');
+  zoomHint.append(createKeycap('V'), el('span', undefined, 'ZOOM'));
+  zoomHint.hidden = true;
+  zoomHud.append(zoomTag, zoomHint);
+
+  root.append(reticleSvg, zoomHud);
+
+  let activeStyle: ScopeOverlayKind = 'none';
+  function setStyle(style: ScopeOverlayKind) {
+    if (style === activeStyle) return;
+    activeStyle = style;
+    root.dataset.style = style;
+    acogGroup.style.display = style === 'acog' ? '' : 'none';
+    lpvoGroup.style.display = style === 'lpvo' ? '' : 'none';
+    sniperGroup.style.display = style === 'sniper' ? '' : 'none';
+  }
+  setStyle('sniper');
+
+  return { root, reticleSvg, zoomTag, zoomHint, setStyle };
 }
 
 export function createHudView(container: HTMLElement, totalTargets: number) {
   const layer = el('div', 'hud-layer');
   layer.dataset.visible = 'true';
 
-  // 0. Full-Screen Telescopic Sniper Scope Overlay (AWM 6×)
-  const scope = buildTelescopicScopeOverlay();
+  // 0. Multi-Optic Magnified Scope Overlay (ACOG 3.5× / Razor LPVO 2–5× / PM II 6–10×)
+  const scope = buildScopeOverlay();
 
   // 1. Top Objective Tracker (Targets Down, adaptive N-segment bar, live Run Timer)
   const objective = el('section', 'hud-plate hud-objective');
@@ -302,8 +443,14 @@ export function createHudView(container: HTMLElement, totalTargets: number) {
   // Cached state to avoid unnecessary DOM writes in the 60+ Hz frame loop
   let shownVisible = true;
   let shownWeaponId: WeaponId | null = null;
+  let shownOpticId: OpticId | null = null;
   let shownSlotKey = '';
   let shownActiveSlot: WeaponSlot | null = null;
+  let shownScopeActive = false;
+  let shownScopeOpacity = '';
+  let shownScopeCant = '';
+  let shownScopeZoom = '';
+  let shownScopeVariable = false;
   let shownDown = -1;
   let shownCleared = false;
   let shownTimer = '';
@@ -332,14 +479,16 @@ export function createHudView(container: HTMLElement, totalTargets: number) {
   let dryFireTimer = 0;
   const feedItems: FeedEntry[] = [];
 
-  function syncWeaponPresentation(weaponId: WeaponId) {
+  function syncWeaponPresentation(weaponId: WeaponId, opticId: OpticId) {
     const spec = getWeaponSpec(weaponId);
+    const optic = OPTICS[opticId];
     shownWeaponId = weaponId;
+    shownOpticId = opticId;
     shownRounds = -1; // Force pip & counter refresh for new magazine size.
 
     weaponSvgHost.replaceChildren(createWeaponSilhouette(weaponId, 'hud-weapon-svg'));
     weaponName.textContent = spec.name;
-    weaponCaliber.textContent = spec.caliber;
+    weaponCaliber.textContent = `${spec.caliber} · ${optic.shortName}`;
     weaponMode.textContent = FIRE_MODE_SHORT[spec.fireMode] ?? spec.fireMode.toUpperCase();
     roundsCapacity.textContent = `/ ${spec.magazineSize}`;
 
@@ -419,21 +568,43 @@ export function createHudView(container: HTMLElement, totalTargets: number) {
         stanceWrap.hidden = !showTacticalFeed;
       }
 
-      // Telescopic sniper scope overlay (rotates cleanly around dead-centre (50%, 50%) on lean!).
-      if (scopeOverlay.active && visible) {
-        scope.root.dataset.active = 'true';
-        scope.root.style.opacity = scopeOverlay.opacity.toFixed(3);
-        const deg = (scopeOverlay.cantRad * 180) / Math.PI;
-        scope.reticleSvg.style.transform = `translate(-50%, -50%) rotate(${deg.toFixed(2)}deg)`;
-        scope.zoomTag.textContent = `${scopeOverlay.zoom.toFixed(1)}× FFP`;
-      } else if (scope.root.dataset.active !== 'false') {
+      // Multi-optic scope overlay (`acog` 3.5× / `lpvo` 2–5× / `sniper` 6–10×), fully memoized!
+      const showScope = scopeOverlay.active && visible && scopeOverlay.style !== 'none';
+      if (showScope) {
+        scope.setStyle(scopeOverlay.style);
+        if (!shownScopeActive) {
+          shownScopeActive = true;
+          scope.root.dataset.active = 'true';
+        }
+        const opStr = scopeOverlay.opacity.toFixed(2);
+        if (opStr !== shownScopeOpacity) {
+          shownScopeOpacity = opStr;
+          scope.root.style.opacity = opStr;
+        }
+        const degStr = ((scopeOverlay.cantRad * 180) / Math.PI).toFixed(1);
+        if (degStr !== shownScopeCant) {
+          shownScopeCant = degStr;
+          scope.reticleSvg.style.transform = `translate(-50%, -50%) rotate(${degStr}deg)`;
+        }
+        const zoomText = `${scopeOverlay.zoom.toFixed(1)}× · ${scopeOverlay.opticName}`;
+        if (zoomText !== shownScopeZoom) {
+          shownScopeZoom = zoomText;
+          scope.zoomTag.textContent = zoomText;
+        }
+        if (scopeOverlay.variableZoom !== shownScopeVariable) {
+          shownScopeVariable = scopeOverlay.variableZoom;
+          scope.zoomHint.hidden = !scopeOverlay.variableZoom;
+        }
+      } else if (shownScopeActive) {
+        shownScopeActive = false;
+        shownScopeOpacity = '0';
         scope.root.dataset.active = 'false';
         scope.root.style.opacity = '0';
       }
 
-      // Sync weapon silhouette, name, calibre, and adaptive pips when active weapon changes.
-      if (state.weapon.weaponId !== shownWeaponId) {
-        syncWeaponPresentation(state.weapon.weaponId);
+      // Sync weapon silhouette, name, calibre + mounted optic tag, and adaptive pips when changed.
+      if (state.weapon.weaponId !== shownWeaponId || spec.opticId !== shownOpticId) {
+        syncWeaponPresentation(state.weapon.weaponId, spec.opticId);
       }
 
       // Sync Primary [1] / Secondary [2] quick-slot strip.

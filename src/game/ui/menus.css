@@ -1527,8 +1527,8 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  padding: 18px 20px;
-  gap: 12px;
+  padding: 12px 18px;
+  gap: 8px;
   background: radial-gradient(
     ellipse 85% 75% at 50% 48%,
     rgba(30, 40, 56, 0.42),
@@ -1540,7 +1540,7 @@
 .loadout-stage__meta {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
 }
 
 .loadout-stage__slot-tag {
@@ -1554,7 +1554,7 @@
 .loadout-stage__name {
   margin: 0;
   font-family: var(--ui-font-display);
-  font-size: 36px;
+  font-size: 30px;
   font-weight: 700;
   letter-spacing: 0.05em;
   line-height: 0.96;
@@ -1585,7 +1585,7 @@
 .loadout-stage__viewport {
   position: relative;
   flex: 1;
-  min-height: 190px;
+  min-height: 140px;
   border-radius: 2px;
   border: 1px solid var(--ui-edge-subtle);
   background:
@@ -1625,13 +1625,14 @@
 .loadout-stage__footer {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 7px;
+  flex-shrink: 0;
 }
 
 .loadout-stage__role {
   margin: 0;
-  font-size: 13.5px;
-  line-height: 1.45;
+  font-size: 12.5px;
+  line-height: 1.32;
   color: var(--ui-ink-secondary);
 }
 
@@ -1643,15 +1644,15 @@
 .loadout-equip-btn,
 .loadout-deploy-btn {
   appearance: none;
-  height: 42px;
-  padding: 0 18px;
+  height: 38px;
+  padding: 0 16px;
   border-radius: 2px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
   font-family: var(--ui-font-display);
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
   letter-spacing: 0.09em;
   text-transform: uppercase;
@@ -1827,6 +1828,67 @@
   font-weight: 600;
   letter-spacing: 0.05em;
   color: var(--ui-accent);
+}
+
+/* Interactive Armory Optic Attachment Selector Row */
+.loadout-optics {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 2px;
+  background: rgba(9, 13, 19, 0.72);
+  border: 1px solid var(--ui-edge-subtle);
+}
+
+.loadout-optics__label {
+  font-family: var(--ui-font-display);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--ui-ink-secondary);
+  white-space: nowrap;
+}
+
+.loadout-optics__pills {
+  display: flex;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.loadout-optic-pill {
+  appearance: none;
+  cursor: pointer;
+  padding: 3px 7px;
+  border-radius: 2px;
+  border: 1px solid rgba(230, 238, 248, 0.16);
+  background: rgba(18, 24, 33, 0.8);
+  color: rgba(235, 240, 246, 0.78);
+  font-family: var(--ui-font-display);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  transition:
+    background var(--ui-dur-fast) linear,
+    border-color var(--ui-dur-fast) linear,
+    color var(--ui-dur-fast) linear;
+}
+
+.loadout-optic-pill:hover {
+  border-color: rgba(229, 169, 60, 0.55);
+  color: var(--ui-ink-primary);
+}
+
+.loadout-optic-pill[data-selected='true'] {
+  background: rgba(229, 169, 60, 0.2);
+  border-color: var(--ui-accent);
+  color: var(--ui-accent);
+  box-shadow: inset 0 0 0 1px rgba(229, 169, 60, 0.24);
 }
 
 /* Controls Screen Grid */

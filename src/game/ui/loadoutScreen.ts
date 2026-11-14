@@ -1,5 +1,5 @@
-import type { WeaponCategory, WeaponId, WeaponSpec } from '../../core/weapon';
-import { getWeaponSpec, WEAPONS, weaponRpm } from '../../core/weapon';
+import type { EffectiveWeaponSpec, WeaponCategory, WeaponId, WeaponSpec } from '../../core/weapon';
+import { effectiveWeaponSpec, getWeaponSpec, OPTICS, WEAPONS, weaponRpm } from '../../core/weapon';
 import type { GameAudio } from '../audio';
 import { createWeaponTurntable } from '../weapons/turntable';
 import { el } from './dom';
@@ -20,25 +20,18 @@ const CATEGORY_TABS: readonly { readonly id: CategoryTabId; readonly label: stri
 
 const WEAPON_ROLES: Readonly<Record<WeaponId, string>> = {
   hk416:
-    'Balanced 5.56mm tactical carbine fitted with an EOTech holographic sight for rapid target transitions across the yard.',
-  ak47: 'Hard-hitting 7.62×39mm rifle with laminate furniture, open tangent iron sights, and stout controllable bursts.',
+    'Balanced 5.56mm tactical carbine supporting iron sights, red dot, holographic, ACOG 3.5×, or variable 2–5× LPVO optics.',
+  ak47: 'Hard-hitting 7.62×39mm rifle with laminate furniture and side-rail optic mount supporting irons, red dot, holo, or ACOG.',
   'scar-h':
-    'Heavy 7.62×51mm battle rifle in Flat Dark Earth with a 1.8× combat reflex optic for authoritative mid-to-long lanes.',
-  mp5: 'Ultra-nimble 9×19mm roller-delayed submachine gun with hooded diopter irons and rapid handling inside the breach house.',
+    'Heavy 7.62×51mm battle rifle in Flat Dark Earth built for mid-to-long lanes with ACOG 3.5× or variable 2–5× LPVO optics.',
+  mp5: 'Ultra-nimble 9×19mm roller-delayed submachine gun paired with a claw-mount Aimpoint Micro T-2 red dot for rapid CQB.',
   'remington-870':
     '12-gauge pump-action tactical shotgun firing an 8-pellet buckshot pattern tailored for close-quarters breaching.',
-  awm: 'Long-range .338 Lapua Magnum bolt-action precision rifle with a 6× mil-dot telescopic scope built for the 38 m lane.',
+  awm: 'Long-range .338 Lapua Magnum bolt-action precision rifle with a variable 6–10× FFP sniper scope built for the 38 m lane.',
   m1911:
-    'Classic .45 ACP Government Model sidearm — crisp iron sights, fast draw speed, and dependable close-range backup.',
+    'Classic .45 ACP Government Model sidearm — crisp iron sights or slide-mounted Micro T-2 red dot with fast draw speed.',
   'desert-eagle':
-    'Brushed stainless .50 AE magnum sidearm delivering massive report, long reach, and high-visibility 3-dot combat sights.',
-};
-
-const OPTIC_LABEL: Readonly<Record<WeaponSpec['scopeStyle'], string>> = {
-  irons: 'Iron Sights',
-  holo: 'EOTech Holo',
-  reflex: 'Reflex Sight',
-  telescopic: '6× Telescopic Scope',
+    'Brushed stainless .50 AE magnum sidearm with top rail supporting iron sights, red dot, or a heavy 3.5× hunting ACOG.',
 };
 
 const FIRE_MODE_LABEL: Readonly<Record<WeaponSpec['fireMode'], string>> = {
@@ -50,9 +43,9 @@ const FIRE_MODE_LABEL: Readonly<Record<WeaponSpec['fireMode'], string>> = {
 
 interface StatDef {
   readonly label: string;
-  readonly format: (spec: WeaponSpec) => string;
+  readonly format: (spec: EffectiveWeaponSpec) => string;
   /** 0..1 normalized fill where higher is stronger/better. */
-  readonly score: (spec: WeaponSpec) => number;
+  readonly score: (spec: EffectiveWeaponSpec) => number;
 }
 
 const STAT_DEFS: readonly StatDef[] = [
@@ -74,7 +67,7 @@ const STAT_DEFS: readonly StatDef[] = [
   {
     label: 'ADS Handling',
     format: (s) => `${Math.round(s.aimTime * 1000)} ms`,
-    score: (s) => Math.max(0.15, Math.min(1, (0.42 - s.aimTime) / 0.28)),
+    score: (s) => Math.max(0.15, Math.min(1, (0.45 - s.aimTime) / 0.3)),
   },
   {
     label: 'Recoil Control',
@@ -88,8 +81,14 @@ const STAT_DEFS: readonly StatDef[] = [
   },
   {
     label: 'Optic Zoom',
-    format: (s) => `${s.aimZoom.toFixed(s.aimZoom >= 2 ? 1 : 2).replace(/\.00$/, '')}×`,
-    score: (s) => Math.min(1, (s.aimZoom - 1) / 5 + 0.14),
+    format: (s) =>
+      s.zoomStages.length > 1
+        ? `${s.zoomStages[0]}–${s.zoomStages[1]}× (V)`
+        : `${s.aimZoom.toFixed(s.aimZoom >= 2 ? 1 : 2).replace(/\.00$/, '')}×`,
+    score: (s) => {
+      const topZoom = s.zoomStages[s.zoomStages.length - 1] ?? s.aimZoom;
+      return Math.min(1, (topZoom - 1) / 9 + 0.14);
+    },
   },
 ];
 
@@ -190,6 +189,11 @@ export function createLoadoutScreen(
   const turntable = createWeaponTurntable(stageViewport);
 
   const stageFooter = el('div', 'loadout-stage__footer');
+  const opticsBar = el('div', 'loadout-optics');
+  const opticsLabel = el('span', 'loadout-optics__label', 'Optic Mount');
+  const opticsPills = el('div', 'loadout-optics__pills');
+  opticsBar.append(opticsLabel, opticsPills);
+
   const stageRole = el('p', 'loadout-stage__role', '');
   const stageActions = el('div', 'loadout-stage__actions');
   const equipBtn = el('button', 'loadout-equip-btn');
@@ -198,7 +202,7 @@ export function createLoadoutScreen(
   deployBtn.type = 'button';
   deployBtn.append(createIcon('play'), el('span', undefined, 'Deploy'));
   stageActions.append(equipBtn, deployBtn);
-  stageFooter.append(stageRole, stageActions);
+  stageFooter.append(opticsBar, stageRole, stageActions);
 
   stagePanel.append(stageHeader, stageViewport, stageFooter);
 
@@ -346,18 +350,41 @@ export function createLoadoutScreen(
   }
 
   function syncInspector() {
-    const spec = getWeaponSpec(inspectedId);
     const loadout = store.get();
+    const selectedOptic = store.opticFor(inspectedId);
+    const spec = effectiveWeaponSpec(inspectedId, selectedOptic);
     const equippedId = spec.slot === 'primary' ? loadout.primary : loadout.secondary;
-    const equippedSpec = getWeaponSpec(equippedId);
+    const equippedSpec = effectiveWeaponSpec(equippedId, store.opticFor(equippedId));
     const isEquipped = equippedId === spec.id;
 
     stageSlotTag.textContent = spec.slot === 'primary' ? 'Primary Slot [1]' : 'Secondary Slot [2]';
     stageName.textContent = spec.name;
     chipCaliber.textContent = spec.caliber;
     chipMode.textContent = FIRE_MODE_LABEL[spec.fireMode];
-    chipOptic.textContent = OPTIC_LABEL[spec.scopeStyle];
+    chipOptic.textContent = OPTICS[selectedOptic].name;
     stageRole.textContent = WEAPON_ROLES[spec.id];
+
+    // Render compatible optic attachment pills — clicking swaps the 3D scope live!
+    opticsPills.replaceChildren();
+    for (const opticId of spec.compatibleOptics) {
+      const opt = OPTICS[opticId];
+      const pill = el('button', 'loadout-optic-pill');
+      pill.type = 'button';
+      pill.dataset.opticId = opticId;
+      pill.dataset.selected = opticId === selectedOptic ? 'true' : 'false';
+      pill.title = opt.description;
+      pill.textContent = opt.shortName;
+      pill.addEventListener('pointerenter', () => {
+        audio.uiHover();
+      });
+      pill.addEventListener('click', () => {
+        audio.start();
+        audio.uiSelect();
+        store.setOptic(inspectedId, opticId);
+        syncInspector();
+      });
+      opticsPills.append(pill);
+    }
 
     equipBtn.replaceChildren();
     equipBtn.dataset.equipped = isEquipped ? 'true' : 'false';
@@ -426,7 +453,7 @@ export function createLoadoutScreen(
     }
 
     syncCarryStrip();
-    turntable.setWeapon(inspectedId);
+    turntable.setWeapon(inspectedId, selectedOptic);
   }
 
   function inspectWeapon(id: WeaponId) {

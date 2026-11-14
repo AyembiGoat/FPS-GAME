@@ -10,14 +10,14 @@
   opacity: 0;
 }
 
-/* Full-Screen Telescopic Sniper Scope Overlay (AWM 6× FFP Mil-Dot) */
+/* Multi-Optic Magnified Scope Overlays (ACOG 3.5× / Razor LPVO 2–5× / PM II 6–10× FFP) */
 .hud-scope {
   position: fixed;
   inset: 0;
   pointer-events: none;
   opacity: 0;
   z-index: 2;
-  /* Pure black optical matte surrounding a razor-sharp 84vmin circular glass aperture */
+  /* Pure black optical matte surrounding a razor-sharp 84vmin circular glass aperture (Sniper) */
   background: radial-gradient(
     circle at 50% 50%,
     rgba(0, 0, 0, 0) 0%,
@@ -27,6 +27,32 @@
     #020305 44vmin
   );
   will-change: opacity;
+}
+
+/* Trijicon ACOG TA31: subtle Bindon Aiming Concept peripheral vision outside thick bezel */
+.hud-scope[data-style='acog'] {
+  background: radial-gradient(
+    circle at 50% 50%,
+    rgba(0, 0, 0, 0) 0%,
+    rgba(0, 0, 0, 0) 35.5vmin,
+    rgba(4, 7, 10, 0.96) 38.5vmin,
+    rgba(4, 7, 10, 0.94) 41.5vmin,
+    rgba(6, 9, 14, 0.72) 46vmin,
+    rgba(6, 9, 14, 0.62) 100%
+  );
+}
+
+/* Vortex Razor LPVO: ultra-thin tactical bezel preserving clean peripheral awareness */
+.hud-scope[data-style='lpvo'] {
+  background: radial-gradient(
+    circle at 50% 50%,
+    rgba(0, 0, 0, 0) 0%,
+    rgba(0, 0, 0, 0) 40.2vmin,
+    rgba(5, 7, 11, 0.95) 41.6vmin,
+    rgba(5, 7, 11, 0.88) 43.2vmin,
+    rgba(8, 10, 14, 0.56) 46.5vmin,
+    rgba(8, 10, 14, 0.48) 100%
+  );
 }
 
 .hud-scope__reticle {
@@ -40,17 +66,37 @@
   will-change: transform;
 }
 
-.hud-scope__zoom {
+.hud-scope__readout {
   position: fixed;
-  left: calc(50% + 22vmin);
-  top: calc(50% + 26vmin);
+  left: calc(50% + 19vmin);
+  top: calc(50% + 25vmin);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+}
+
+.hud-scope__zoom {
   font-family: var(--ui-font-display);
   font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: rgba(235, 240, 246, 0.56);
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
+  color: rgba(240, 244, 250, 0.72);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.95);
+}
+
+.hud-scope__hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--ui-font-display);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(235, 190, 96, 0.88);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.95);
 }
 
 /* Shared HUD Scrim Plate (zero backdrop-filter on per-frame elements) */

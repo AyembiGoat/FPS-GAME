@@ -4,8 +4,8 @@ import type { GameEvent, GameInput, GameState } from '../core/game';
 import { createGame, setGameLoadout, stepGame } from '../core/game';
 import { shootHouse } from '../core/maps/shootHouse';
 import { NO_INPUT } from '../core/player';
-import type { WeaponId, WeaponSlot } from '../core/weapon';
-import { getWeaponSpec, isWeaponId } from '../core/weapon';
+import type { OpticId, WeaponId, WeaponSlot } from '../core/weapon';
+import { getWeaponSpec, isOpticId, isWeaponId } from '../core/weapon';
 import { createAudio, measureSounds } from './audio';
 import { createHumanInput } from './input';
 import { showMaterials } from './materials/preview';
@@ -93,12 +93,16 @@ function play(runMode: 'auto' | 'bot' | 'play') {
     },
   });
 
-  // Live sync whenever the player changes weapons in Armory (even while paused mid-run!).
+  // Live sync whenever the player changes weapons or mounted optics in Armory (even mid-run!).
   loadout.subscribe((nextLoadout) => {
     const prevPrimary = state.weapon.loadout.primary;
     const prevSecondary = state.weapon.loadout.secondary;
-    if (nextLoadout.primary === prevPrimary && nextLoadout.secondary === prevSecondary) return;
-    const switchedSlot: WeaponSlot = nextLoadout.primary !== prevPrimary ? 'primary' : 'secondary';
+    const switchedSlot: WeaponSlot =
+      nextLoadout.primary !== prevPrimary
+        ? 'primary'
+        : nextLoadout.secondary !== prevSecondary
+          ? 'secondary'
+          : state.weapon.activeSlot;
     state = setGameLoadout(state, nextLoadout, switchedSlot);
     previous = state;
   });
@@ -163,6 +167,14 @@ function play(runMode: 'auto' | 'bot' | 'play') {
         drawCurrent(0);
         return state;
       },
+      setOptic: (weaponId, opticId) => {
+        loadout.setOptic(weaponId, opticId);
+        state = setGameLoadout(state, loadout.get(), state.weapon.activeSlot);
+        previous = state;
+        drawCurrent(0);
+        return state;
+      },
+      renderStats: () => view.renderStats(),
       loadout: () => loadout.get(),
       inspectLoadout: (weaponId) => {
         ui.inspectLoadoutWeapon(weaponId);
@@ -262,8 +274,10 @@ if (mode === 'materials') {
   showMaterials();
 } else if (mode === 'weapon') {
   const param = query.get('weapon');
+  const opticParam = query.get('optic');
   const id: WeaponId = isWeaponId(param) ? param : 'hk416';
-  showWeapon(getWeaponSpec(id));
+  const optic: OpticId | undefined = isOpticId(opticParam) ? opticParam : undefined;
+  showWeapon(getWeaponSpec(id), optic);
 } else {
   play(mode);
 }

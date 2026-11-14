@@ -1,5 +1,5 @@
 import type { GameEvent, GameInput, GameState } from '../core/game';
-import type { Loadout, WeaponId, WeaponSlot } from '../core/weapon';
+import type { Loadout, OpticId, WeaponId, WeaponSlot } from '../core/weapon';
 import type { ScreenName } from './ui';
 import type { GameSettings } from './ui/settings';
 
@@ -24,6 +24,10 @@ declare global {
       settings(patch?: Partial<GameSettings>): GameSettings;
       /** Equip a weapon directly in live state and loadout storage, optionally switching to its slot. */
       equipWeapon(weaponId: WeaponId, activeSlot?: WeaponSlot): GameState;
+      /** Mount a specific optic on a firearm and refresh live weapon state. */
+      setOptic(weaponId: WeaponId, opticId: OpticId): GameState;
+      /** Read current WebGL draw-call / triangle / DPR telemetry. */
+      renderStats(): { calls: number; triangles: number; geometries: number; pixelRatio: number };
       /** Read current persisted loadout. */
       loadout(): Loadout;
       /** Select a specific firearm on the Armory Loadout screen. */
