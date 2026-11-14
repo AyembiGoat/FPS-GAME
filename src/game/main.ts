@@ -1,25 +1,27 @@
 import { createBot } from '../core/bot';
 import { createFixedLoop, SIM_STEP_SECONDS } from '../core/fixedLoop';
 import type { GameEvent, GameInput, GameState } from '../core/game';
-import { createGame, stepGame, WEAPON } from '../core/game';
+import { createGame, setGameLoadout, stepGame } from '../core/game';
 import { shootHouse } from '../core/maps/shootHouse';
 import { NO_INPUT } from '../core/player';
+import type { WeaponId, WeaponSlot } from '../core/weapon';
+import { getWeaponSpec, isWeaponId } from '../core/weapon';
 import { createAudio, measureSounds } from './audio';
 import { createHumanInput } from './input';
 import { showMaterials } from './materials/preview';
 import { createGameUi } from './ui';
+import { createLoadoutStore } from './ui/loadout';
 import { createSettingsStore } from './ui/settings';
 import { createView } from './view';
 import { showWeapon } from './weapons/preview';
 
 /**
  * Ways to run:
- *   (default)  a person plays with keyboard and mouse from the live Title Screen.
- *   ?bot       the bot plays in real time, to watch.
- *   ?materials every surface side by side, to check textures. No game.
- *   ?weapon    the gun and hands from four sides, to check the grip. No game.
- *   ?auto      nothing moves until a script calls window.__fps. Used by
- *              `npm run playtest` so an agent can drive the game and take screenshots.
+ *   (default)       a person plays with keyboard and mouse from the live Title Screen.
+ *   ?bot            the bot plays in real time, to watch.
+ *   ?materials      every surface side by side, to check textures. No game.
+ *   ?weapon         the default gun (or `?weapon=ak47`, `?weapon=awm`, etc.) from four sides.
+ *   ?auto           nothing moves until a script calls window.__fps. Used by `npm run playtest`.
  */
 const query = new URLSearchParams(window.location.search);
 const mode = query.has('materials')
@@ -35,28 +37,37 @@ const mode = query.has('materials')
 function play(runMode: 'auto' | 'bot' | 'play') {
   const map = shootHouse;
   const settings = createSettingsStore();
+  const loadout = createLoadoutStore();
   const audio = createAudio();
   const view = createView(map, audio);
   let bot = createBot(map);
 
-  let previous = createGame(map);
+  let previous = createGame(map, loadout.get(), 'primary');
   let state = previous;
 
   function resetMatch() {
-    previous = createGame(map);
+    previous = createGame(map, loadout.get(), 'primary');
     state = previous;
     bot = createBot(map);
     view.resetTargets(state);
   }
 
-  function requestPlay() {
+  function applyWeaponEquip(weaponId?: WeaponId, slotOverride?: WeaponSlot) {
+    if (weaponId) loadout.equip(weaponId);
+    const activeSlot =
+      slotOverride ?? (weaponId ? getWeaponSpec(weaponId).slot : state.weapon.activeSlot);
+    state = setGameLoadout(state, loadout.get(), activeSlot);
+    previous = state;
+  }
+
+  function requestPlay(deployWeaponId?: WeaponId) {
+    if (deployWeaponId) applyWeaponEquip(deployWeaponId);
     audio.start();
     if (runMode === 'play') {
       try {
         const lockRequest = view.canvas.requestPointerLock() as unknown;
         if (lockRequest instanceof Promise) {
           void lockRequest.catch(() => {
-            // Browser rejected lock (e.g. rapid Escape cooldown); return cleanly to pause/title.
             ui.onPointerLockChanged(false, state);
           });
         }
@@ -71,6 +82,7 @@ function play(runMode: 'auto' | 'bot' | 'play') {
     totalTargets: map.targets.length,
     audio,
     settings,
+    loadout,
     onRequestPlay: requestPlay,
     onRestartRun: resetMatch,
     onQuitToTitle: () => {
@@ -79,6 +91,16 @@ function play(runMode: 'auto' | 'bot' | 'play') {
       }
       resetMatch();
     },
+  });
+
+  // Live sync whenever the player changes weapons in Armory (even while paused mid-run!).
+  loadout.subscribe((nextLoadout) => {
+    const prevPrimary = state.weapon.loadout.primary;
+    const prevSecondary = state.weapon.loadout.secondary;
+    if (nextLoadout.primary === prevPrimary && nextLoadout.secondary === prevSecondary) return;
+    const switchedSlot: WeaponSlot = nextLoadout.primary !== prevPrimary ? 'primary' : 'secondary';
+    state = setGameLoadout(state, nextLoadout, switchedSlot);
+    previous = state;
   });
 
   settings.subscribe((current) => {
@@ -103,17 +125,16 @@ function play(runMode: 'auto' | 'bot' | 'play') {
       } else {
         view.frame(previous, state, 1, dt, noLook, true);
       }
-      ui.update(dt, state, view.aimBlend());
+      ui.update(dt, state, view.aimBlend(), view.scopeOverlay());
     };
 
-    /** Run steps with animations advancing in game time, and draw once at the end. */
     const run = (steps: number, input: (current: GameState) => GameInput) => {
       const events: GameEvent[] = [];
       for (let i = 0; i < steps; i++) {
         events.push(...step(input(state)));
         const isLast = i === steps - 1;
         view.frame(previous, state, 1, SIM_STEP_SECONDS, noLook, isLast);
-        ui.update(SIM_STEP_SECONDS, state, view.aimBlend());
+        ui.update(SIM_STEP_SECONDS, state, view.aimBlend(), view.scopeOverlay());
       }
       return events;
     };
@@ -137,6 +158,34 @@ function play(runMode: 'auto' | 'bot' | 'play') {
         }
         return settings.get();
       },
+      equipWeapon: (weaponId, activeSlot) => {
+        applyWeaponEquip(weaponId, activeSlot);
+        drawCurrent(0);
+        return state;
+      },
+      loadout: () => loadout.get(),
+      inspectLoadout: (weaponId) => {
+        ui.inspectLoadoutWeapon(weaponId);
+      },
+      selectSettingsTab: (tab) => {
+        ui.selectSettingsTab(tab);
+      },
+      place: (position, yaw, pitch = 0) => {
+        state = {
+          ...state,
+          player: {
+            ...state.player,
+            position: { ...position },
+            velocity: { x: 0, y: 0, z: 0 },
+            yaw,
+            pitch,
+            lean: 0,
+            grounded: true,
+          },
+        };
+        previous = state;
+        drawCurrent(0);
+      },
       restart: () => {
         resetMatch();
         ui.resetRunUi();
@@ -148,13 +197,17 @@ function play(runMode: 'auto' | 'bot' | 'play') {
     const human = createHumanInput(view.canvas);
     settings.subscribe((current) => {
       human.setSensitivity(current.mouseSensitivity, current.adsSensitivity);
+      human.setControlPreferences({
+        aimMode: current.aimMode,
+        leanMode: current.leanMode,
+        scrollWeaponSwitch: current.scrollWeaponSwitch,
+      });
     });
 
     const loop = createFixedLoop();
     let lastTime = performance.now();
 
     if (runMode === 'bot') {
-      // Sound needs a click first; the bot plays silently until then.
       window.addEventListener(
         'pointerdown',
         () => {
@@ -166,7 +219,6 @@ function play(runMode: 'auto' | 'bot' | 'play') {
       document.addEventListener('pointerlockchange', () => {
         ui.onPointerLockChanged(human.locked(), state);
       });
-      // Clicking the canvas directly while unpaused also captures pointer lock.
       view.canvas.addEventListener('click', () => {
         if (ui.screen() === 'playing' && !human.locked()) {
           requestPlay();
@@ -180,10 +232,11 @@ function play(runMode: 'auto' | 'bot' | 'play') {
 
       const running = runMode === 'bot' || (ui.screen() === 'playing' && human.locked());
       human.setAimState(view.zoom(), view.aimBlend());
+      human.setActiveSlot(state.weapon.activeSlot);
 
       if (ui.isTitleBackdropActive()) {
         view.renderTitleBackdrop(elapsed, settings.get().reducedMotion);
-        ui.update(elapsed, state, 0);
+        ui.update(elapsed, state, 0, view.scopeOverlay());
       } else {
         if (running) view.adapt(elapsed);
         const alpha = running
@@ -196,7 +249,7 @@ function play(runMode: 'auto' | 'bot' | 'play') {
           running ? elapsed : 0,
           running && runMode === 'play' ? human.pendingLook() : noLook,
         );
-        ui.update(elapsed, state, view.aimBlend());
+        ui.update(elapsed, state, view.aimBlend(), view.scopeOverlay());
       }
 
       requestAnimationFrame(frame);
@@ -208,7 +261,9 @@ function play(runMode: 'auto' | 'bot' | 'play') {
 if (mode === 'materials') {
   showMaterials();
 } else if (mode === 'weapon') {
-  showWeapon(WEAPON);
+  const param = query.get('weapon');
+  const id: WeaponId = isWeaponId(param) ? param : 'hk416';
+  showWeapon(getWeaponSpec(id));
 } else {
   play(mode);
 }

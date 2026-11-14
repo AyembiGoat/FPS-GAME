@@ -3,8 +3,9 @@ import type { SurfaceMaterial } from '../core/map';
 import type { Vec3 } from '../core/vec';
 import { softDot } from './materials';
 
-const HOLES = 48;
-const PUFFS = 8;
+// Expanded fixed pools so 8-pellet shotgun patterns and 30-round full-auto bursts stay crisp.
+const HOLES = 128;
+const PUFFS = 24;
 const PUFF_LIFE = 0.32;
 
 const DUST: Record<SurfaceMaterial | 'target', number> = {
@@ -12,12 +13,14 @@ const DUST: Record<SurfaceMaterial | 'target', number> = {
   concrete: 0xc4c0b6,
   plywood: 0xc9a878,
   crate: 0xb89868,
-  target: 0xe6e4de,
+  container: 0xd0d8e0,
+  timber: 0x8e7254,
+  target: 0xffd28a,
 };
 
 /** Bullet holes and dust where a shot lands. Both use fixed pools; nothing is allocated per shot. */
 export function createEffects(scene: THREE.Scene) {
-  const holeGeometry = new THREE.CircleGeometry(0.02, 10);
+  const holeGeometry = new THREE.CircleGeometry(0.018, 10);
   const holeMaterial = new THREE.MeshBasicMaterial({
     color: 0x15120f,
     polygonOffset: true,

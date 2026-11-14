@@ -1,11 +1,15 @@
 import * as THREE from 'three';
 import type { GameEvent, GameState } from '../core/game';
-import { WEAPON } from '../core/game';
+import { activeWeaponSpec } from '../core/game';
 import type { GameMap } from '../core/map';
 import { eyeAt, PLAYER_TUNING } from '../core/player';
+import type { WeaponId } from '../core/weapon';
+import { getWeaponSpec } from '../core/weapon';
 import type { GameAudio } from './audio';
 import { createEffects } from './effects';
 import { buildWeaponModel } from './weapons';
+import type { WeaponModel } from './weapons/model';
+import type { Viewmodel } from './weapons/viewmodel';
 import { createViewmodel } from './weapons/viewmodel';
 import { buildWorld } from './world';
 
@@ -19,8 +23,8 @@ const MIN_RESOLUTION = 0.6;
 const RESOLUTION_STEP = 0.85;
 /** A frame longer than this (about 45 a second) counts as slow. */
 const SLOW_FRAME_SECONDS = 0.022;
-/** Radians the view rolls at full lean. */
-const LEAN_ROLL = 0.15;
+/** Radians the world camera rolls at full lean (~8.3 deg). */
+const LEAN_ROLL = 0.145;
 
 /** The lens angle that magnifies the centre of the view `zoom` times. */
 function zoomedFieldOfView(baseFov: number, zoom: number): number {
@@ -28,9 +32,16 @@ function zoomedFieldOfView(baseFov: number, zoom: number): number {
   return THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(half) / zoom));
 }
 
+export interface ScopeOverlayState {
+  readonly active: boolean;
+  readonly opacity: number;
+  /** Roll cant in radians matching the leaned viewmodel cant so scoped lean feels unified. */
+  readonly cantRad: number;
+  readonly zoom: number;
+}
+
 /** Everything the player sees and hears. Reads simulation state; never changes it. */
 export function createView(map: GameMap, audio: GameAudio) {
-  // Ask for the fast graphics card on laptops that have two.
   const renderer = new THREE.WebGLRenderer({
     antialias: true,
     powerPreference: 'high-performance',
@@ -38,8 +49,6 @@ export function createView(map: GameMap, audio: GameAudio) {
   let resolution = MAX_RESOLUTION;
   renderer.setPixelRatio(resolution);
   renderer.shadowMap.enabled = true;
-  // Nearly everything that casts a shadow stands still, so shadows are redrawn only
-  // while a target is falling or getting up, not every frame.
   renderer.shadowMap.autoUpdate = false;
   let shadowsStale = true;
   let slowSeconds = 0;
@@ -47,7 +56,6 @@ export function createView(map: GameMap, audio: GameAudio) {
   let secondsBeforeRaising = 8;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 0.5;
-  // The gun is drawn in a second pass over the world, so clearing is done by hand.
   renderer.autoClear = false;
   document.body.prepend(renderer.domElement);
 
@@ -55,19 +63,30 @@ export function createView(map: GameMap, audio: GameAudio) {
   let baseFov = DEFAULT_FIELD_OF_VIEW;
   const camera = new THREE.PerspectiveCamera(baseFov, 1, 0.05, 3000);
   camera.rotation.order = 'YXZ';
-  const weaponModel = buildWeaponModel(WEAPON);
-  const viewmodel = createViewmodel(weaponModel, world.scene.environment);
   const effects = createEffects(world.scene);
 
   const muzzleLight = new THREE.PointLight(0xffc98a, 0, 9, 2);
   world.scene.add(muzzleLight);
 
-  // Build every shader now. Otherwise the first shot, the first bullet hole and the
-  // first dust puff each freeze the game for a moment while theirs is built.
-  for (const [scene, lens] of [
-    [world.scene, camera],
-    [viewmodel.scene, viewmodel.camera],
-  ] as const) {
+  // Lazy per-weapon viewmodel cache: builds and pre-compiles each firearm on first use so
+  // switching weapons mid-run is instant with zero hitching.
+  const viewmodelCache = new Map<WeaponId, { model: WeaponModel; viewmodel: Viewmodel }>();
+  function getViewmodel(weaponId: WeaponId) {
+    let entry = viewmodelCache.get(weaponId);
+    if (!entry) {
+      const spec = getWeaponSpec(weaponId);
+      const model = buildWeaponModel(spec);
+      const viewmodel = createViewmodel(model, world.scene.environment);
+      viewmodel.camera.aspect = window.innerWidth / Math.max(1, window.innerHeight);
+      viewmodel.camera.updateProjectionMatrix();
+      compileScene(viewmodel.scene, viewmodel.camera);
+      entry = { model, viewmodel };
+      viewmodelCache.set(weaponId, entry);
+    }
+    return entry;
+  }
+
+  function compileScene(scene: THREE.Scene, lens: THREE.Camera) {
     const hidden: THREE.Object3D[] = [];
     scene.traverse((object) => {
       if (!object.visible) {
@@ -78,9 +97,12 @@ export function createView(map: GameMap, audio: GameAudio) {
     renderer.compile(scene, lens);
     for (const object of hidden) object.visible = false;
   }
-  let muzzleLightTime = 0;
 
-  // Landing pushes the camera down; a spring brings it back.
+  compileScene(world.scene, camera);
+  let currentWeaponId: WeaponId = 'hk416';
+  let activeRig = getViewmodel(currentWeaponId);
+
+  let muzzleLightTime = 0;
   let landOffset = 0;
   let landVelocity = 0;
   let walked = 0;
@@ -95,6 +117,13 @@ export function createView(map: GameMap, audio: GameAudio) {
   let currentAim = 0;
   let aimDirection = -1;
   let orbitClock = 0;
+  let scopeState: ScopeOverlayState = { active: false, opacity: 0, cantRad: 0, zoom: 1 };
+
+  function ensureWeaponRig(weaponId: WeaponId) {
+    if (weaponId === currentWeaponId) return;
+    currentWeaponId = weaponId;
+    activeRig = getViewmodel(weaponId);
+  }
 
   /** Where a point in the world sits between the ears: -1 left, 1 right. */
   function panOf(point: { x: number; y: number; z: number }): number {
@@ -114,8 +143,10 @@ export function createView(map: GameMap, audio: GameAudio) {
     renderer.setSize(width, height);
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
-    viewmodel.camera.aspect = width / height;
-    viewmodel.camera.updateProjectionMatrix();
+    for (const entry of viewmodelCache.values()) {
+      entry.viewmodel.camera.aspect = width / height;
+      entry.viewmodel.camera.updateProjectionMatrix();
+    }
   }
   window.addEventListener('resize', resize);
   resize();
@@ -136,14 +167,7 @@ export function createView(map: GameMap, audio: GameAudio) {
       shadowsStale = true;
     },
 
-    /**
-     * Keep the game smooth on slower machines. Call once per displayed frame with how
-     * long that frame took. After a run of slow frames the picture is drawn with fewer
-     * pixels; after a long smooth spell it is sharpened again, more cautiously each
-     * time it has had to back off.
-     */
     adapt(frameSeconds: number) {
-      // A very long frame is the tab being hidden or the page loading, not a slow machine.
       if (frameSeconds > 0.2) return;
       if (frameSeconds > SLOW_FRAME_SECONDS) {
         slowSeconds += frameSeconds;
@@ -168,24 +192,44 @@ export function createView(map: GameMap, audio: GameAudio) {
       }
     },
 
-    /** Current magnification, so mouse speed can be scaled to match. */
     zoom: () => zoom,
     aimBlend: () => currentAim,
+    scopeOverlay: () => scopeState,
 
     /** React to what happened in one simulation step. */
     handle(events: readonly GameEvent[], state: GameState) {
+      ensureWeaponRig(state.weapon.weaponId);
+      const spec = activeWeaponSpec(state);
+
       for (const event of events) {
         switch (event.type) {
-          case 'shot':
-            viewmodel.fire();
-            audio.shot();
+          case 'shot': {
+            const kickScale = spec.recoilKick / 0.032;
+            activeRig.viewmodel.fire(kickScale);
+            audio.shot(event.weaponId);
             muzzleLightTime = MUZZLE_LIGHT_SECONDS;
-            if (event.hit) {
-              effects.impact(event.hit.point, event.hit.normal, event.hit.surface);
-              const pan = panOf(event.hit.point);
-              if (event.hit.surface === 'target') audio.steel(event.hit.distance, pan);
-              else audio.impact(event.hit.distance, event.hit.surface, pan);
+
+            // Paint all pellet/bullet holes & dust, but deduplicate simultaneous steel/surface audio.
+            let playedSteel = false;
+            let playedSurface = false;
+            for (const impact of event.hits) {
+              effects.impact(impact.point, impact.normal, impact.surface);
+              const pan = panOf(impact.point);
+              if (impact.surface === 'target') {
+                if (!playedSteel) {
+                  audio.steel(impact.distance, pan);
+                  playedSteel = true;
+                }
+              } else if (!playedSurface) {
+                audio.impact(impact.distance, impact.surface, pan);
+                playedSurface = true;
+              }
             }
+            break;
+          }
+          case 'weapon-switch':
+            ensureWeaponRig(event.weaponId);
+            audio.weaponSwitch();
             break;
           case 'target-down':
             world.targets[event.index]?.setDown(true);
@@ -197,7 +241,7 @@ export function createView(map: GameMap, audio: GameAudio) {
             audio.dryFire();
             break;
           case 'reload-start':
-            audio.reload(WEAPON.reloadTime, weaponModel.reload, state.weapon.rounds === 0);
+            audio.reload(spec.reloadTime, activeRig.model.reload, state.weapon.rounds === 0);
             break;
           case 'jump':
             audio.footstep(0.8);
@@ -212,21 +256,20 @@ export function createView(map: GameMap, audio: GameAudio) {
       }
     },
 
-    /**
-     * Slowly drifting vantage camera overlooking Shoot House for the live Title Screen.
-     */
+    /** Slowly drifting vantage camera overlooking the expanded Shoot House for the Title Screen. */
     renderTitleBackdrop(dt: number, reducedMotion: boolean) {
-      orbitClock += reducedMotion ? dt * 0.08 : dt * 0.24;
-      const swayX = Math.sin(orbitClock) * 2.8;
-      const swayZ = 9.4 + Math.cos(orbitClock * 0.7) * 1.4;
-      const swayY = 2.45 + Math.sin(orbitClock * 0.5) * 0.16;
+      orbitClock += reducedMotion ? dt * 0.08 : dt * 0.22;
+      const swayX = -1.2 + Math.sin(orbitClock) * 3.6;
+      const swayZ = 14.8 + Math.cos(orbitClock * 0.7) * 1.8;
+      const swayY = 3.1 + Math.sin(orbitClock * 0.5) * 0.2;
 
       if (zoom !== 1) {
         zoom = 1;
         syncCameraFov();
       }
+      scopeState = { active: false, opacity: 0, cantRad: 0, zoom: 1 };
       camera.position.set(swayX, swayY, swayZ);
-      camera.lookAt(swayX * 0.18, 1.35, -3.8);
+      camera.lookAt(swayX * 0.15 + 1.5, 1.45, -4.5);
       camera.updateMatrixWorld();
 
       for (const target of world.targets) {
@@ -242,11 +285,6 @@ export function createView(map: GameMap, audio: GameAudio) {
       renderer.render(world.scene, camera);
     },
 
-    /**
-     * Draw one frame. `alpha` blends between the last two simulation states;
-     * `look` is mouse movement the simulation has not consumed yet. Pass `draw` as
-     * false to advance animations without rendering.
-     */
     frame(
       previous: GameState,
       state: GameState,
@@ -255,6 +293,9 @@ export function createView(map: GameMap, audio: GameAudio) {
       look: { yaw: number; pitch: number },
       draw = true,
     ) {
+      ensureWeaponRig(state.weapon.weaponId);
+      const spec = activeWeaponSpec(state);
+
       const from = previous.player.position;
       const to = state.player.position;
       const x = THREE.MathUtils.lerp(from.x, to.x, alpha);
@@ -265,7 +306,6 @@ export function createView(map: GameMap, audio: GameAudio) {
       lastPosition.set(x, 0, z);
       if (state.player.grounded) {
         walked += moved;
-        // Offset by half a stride so the first step sounds soon after setting off.
         const stride = Math.floor(walked / STRIDE + 0.5);
         if (stride !== lastStride) {
           lastStride = stride;
@@ -287,18 +327,18 @@ export function createView(map: GameMap, audio: GameAudio) {
         -PLAYER_TUNING.maxPitch,
         PLAYER_TUNING.maxPitch,
       );
-      // The eye moves sideways with the lean, exactly as the simulation fires from it.
       const lean = THREE.MathUtils.lerp(previous.player.lean, state.player.lean, alpha);
       const leanAmount = lean / PLAYER_TUNING.leanDistance;
       const eye = eyeAt({ x, y, z }, yaw, lean);
       camera.position.set(eye.x, eye.y + bob + landOffset, eye.z);
       camera.rotation.set(pitch + state.weapon.recoil, yaw, -leanAmount * LEAN_ROLL);
 
-      // Aiming narrows the lens by the gun's magnification.
+      // Aiming narrows the lens by the active weapon's real magnification (1.25×..6×).
       const aim = THREE.MathUtils.lerp(previous.weapon.aim, state.weapon.aim, alpha);
       currentAim = aim;
-      const wantedZoom = 1 + (WEAPON.aimZoom - 1) * THREE.MathUtils.smoothstep(aim, 0, 1);
-      if (wantedZoom !== zoom) {
+      const smoothAim = THREE.MathUtils.smoothstep(aim, 0, 1);
+      const wantedZoom = 1 + (spec.aimZoom - 1) * smoothAim;
+      if (Math.abs(wantedZoom - zoom) > 1e-4) {
         zoom = wantedZoom;
         syncCameraFov();
       }
@@ -310,10 +350,32 @@ export function createView(map: GameMap, audio: GameAudio) {
         audio.aim(direction > 0);
       }
 
+      // Telescopic sniper scope (AWM): seamlessly snap into crisp full-screen mil-dot overlay
+      // once aim crosses 78% and hide the 3D viewmodel so zero scope geometry clips near plane.
+      const isTelescopic = spec.scopeStyle === 'telescopic';
+      const scopeOpacity = isTelescopic ? THREE.MathUtils.smoothstep(aim, 0.72, 0.94) : 0;
+      const hideModelForScope = isTelescopic && aim >= 0.82;
+      // Rotate reticle slightly with lean cant so leaning while scoped feels physically grounded!
+      const scopedCant = -leanAmount * 0.145;
+      scopeState = {
+        active: scopeOpacity > 0.01,
+        opacity: scopeOpacity,
+        cantRad: scopedCant,
+        zoom: spec.aimZoom,
+      };
+      activeRig.viewmodel.setVisible(!hideModelForScope);
+
       const reloading = state.weapon.reloadRemaining > 0;
-      viewmodel.update(dt, {
+      const cycleProgress =
+        state.weapon.cooldown > 0 ? 1 - state.weapon.cooldown / spec.fireInterval : 0;
+      const switchProgress =
+        state.weapon.switchRemaining > 0 ? state.weapon.switchRemaining / spec.equipTime : 0;
+
+      activeRig.viewmodel.update(dt, {
         rounds: state.weapon.rounds,
-        reloadProgress: reloading ? 1 - state.weapon.reloadRemaining / WEAPON.reloadTime : null,
+        reloadProgress: reloading ? 1 - state.weapon.reloadRemaining / spec.reloadTime : null,
+        cycleProgress,
+        switchProgress,
         aim,
         moveAmount,
         sprinting: speed > PLAYER_TUNING.walkSpeed * 1.1 && state.player.grounded,
@@ -326,9 +388,8 @@ export function createView(map: GameMap, audio: GameAudio) {
       lastYaw = yaw;
       lastPitch = pitch;
 
-      // The gun has its own scene, so hand it the sun as seen from the camera.
       sunInView.copy(world.sunDirection).transformDirection(camera.matrixWorldInverse);
-      viewmodel.setSun(sunInView);
+      activeRig.viewmodel.setSun(sunInView);
 
       muzzleLightTime = Math.max(0, muzzleLightTime - dt);
       muzzleLight.intensity = muzzleLightTime > 0 ? 14 : 0;
@@ -346,8 +407,10 @@ export function createView(map: GameMap, audio: GameAudio) {
       }
       renderer.clear();
       renderer.render(world.scene, camera);
-      renderer.clearDepth();
-      renderer.render(viewmodel.scene, viewmodel.camera);
+      if (!hideModelForScope) {
+        renderer.clearDepth();
+        renderer.render(activeRig.viewmodel.scene, activeRig.viewmodel.camera);
+      }
     },
   };
 }
