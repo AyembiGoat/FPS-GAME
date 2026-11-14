@@ -65,6 +65,20 @@ export function createAudio() {
     dryFire() {
       if (engine) sounds.dryFire(engine);
     },
+    /** A hostile rifle going off, positioned around the player. */
+    hostileShot(distance: number, pan: number) {
+      if (engine) sounds.hostileShot(engine, distance, pan);
+    },
+    hostileHit(distance: number, pan: number) {
+      if (engine) sounds.hostileHit(engine, distance, pan);
+    },
+    hostileDown(distance: number, pan: number) {
+      if (engine) sounds.hostileDown(engine, distance, pan);
+    },
+    /** The player has just been hit. */
+    hitTaken() {
+      if (engine) sounds.hitTaken(engine);
+    },
     reload(duration: number, beats: ReloadBeats, empty: boolean, weaponId?: WeaponId) {
       if (engine) sounds.reload(engine, duration, beats, empty, weaponId);
     },
@@ -150,6 +164,13 @@ const MEASURED: Record<string, (engine: Engine) => void> = {
   plywoodAt10m: (engine) => {
     sounds.impact(engine, 10, 'plywood', 0);
   },
+  hostileShotAt10m: (engine) => {
+    sounds.hostileShot(engine, 10, 0);
+  },
+  hostileDownAt10m: (engine) => {
+    sounds.hostileDown(engine, 10, 0);
+  },
+  hitTaken: sounds.hitTaken,
   uiHover: sounds.uiHover,
   uiSelect: sounds.uiSelect,
   uiBack: sounds.uiBack,

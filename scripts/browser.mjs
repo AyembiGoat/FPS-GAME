@@ -65,6 +65,8 @@ export async function launchGame({ width = 1280, height = 720, mode = 'auto' } =
     executablePath,
     env,
     headless: 'shell',
+    // Software rendering a 2560 x 1440 frame takes a while; screenshots must not time out.
+    protocolTimeout: 240_000,
     // Software WebGL: slow, but it works on machines with no graphics card.
     args: [
       '--no-sandbox',

@@ -1,4 +1,6 @@
+import type { EnemyBehavior } from '../core/enemy';
 import type { GameEvent, GameInput, GameState } from '../core/game';
+import type { GameModeId } from '../core/mode';
 import type { Loadout, OpticId, WeaponId, WeaponSlot } from '../core/weapon';
 import type { ScreenName } from './ui';
 import type { GameSettings } from './ui/settings';
@@ -38,6 +40,21 @@ declare global {
       place(position: { x: number; y: number; z: number }, yaw: number, pitch?: number): void;
       /** Reset the current run back to spawn. */
       restart(): void;
+      /** Which mode the next run uses. */
+      mode(): GameModeId;
+      /** Switch mode and start that mode from the beginning. */
+      setMode(mode: GameModeId): GameState;
+      /** Current player health. */
+      health(): number;
+      /** Live hostile states, for verifying that the simulation really runs. */
+      hostiles(): {
+        id: number;
+        behavior: EnemyBehavior;
+        health: number;
+        aware: boolean;
+        seen: boolean;
+        position: { x: number; y: number; z: number };
+      }[];
     };
   }
 }

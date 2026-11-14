@@ -10,7 +10,7 @@ const PUFF_LIFE = 0.32;
 const CASINGS = 28;
 const CASING_LIFE = 1.65;
 
-const DUST: Record<SurfaceMaterial | 'target', number> = {
+const DUST: Record<SurfaceMaterial | 'target' | 'enemy', number> = {
   floor: 0xcfc8b8,
   concrete: 0xc4c0b6,
   plywood: 0xc9a878,
@@ -18,6 +18,7 @@ const DUST: Record<SurfaceMaterial | 'target', number> = {
   container: 0xd0d8e0,
   timber: 0x8e7254,
   target: 0xffd28a,
+  enemy: 0xb9ad98,
 };
 
 interface CasingSlot {
@@ -104,11 +105,11 @@ export function createEffects(scene: THREE.Scene) {
   const ejectBack = new THREE.Vector3();
 
   return {
-    impact(point: Vec3, normal: Vec3, surface: SurfaceMaterial | 'target') {
+    impact(point: Vec3, normal: Vec3, surface: SurfaceMaterial | 'target' | 'enemy') {
       normalVector.set(normal.x, normal.y, normal.z);
 
-      // Targets fall over, so a hole left hanging in the air would be wrong.
-      if (surface !== 'target') {
+      // Targets fall over and people move, so a hole left hanging in the air would be wrong.
+      if (surface !== 'target' && surface !== 'enemy') {
         dummy.position.set(point.x, point.y, point.z).addScaledVector(normalVector, 0.0025);
         dummy.quaternion.setFromUnitVectors(facing, normalVector);
         dummy.scale.setScalar(0.85 + Math.random() * 0.32);

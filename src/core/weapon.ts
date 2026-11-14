@@ -125,6 +125,8 @@ export interface WeaponSpec {
   readonly reloadTime: number;
   /** Metres a round travels. */
   readonly range: number;
+  /** Damage one projectile does to a combatant. */
+  readonly damage: number;
   /** Radians the muzzle climbs per shot. */
   readonly recoilKick: number;
   /** Per-second rate at which the muzzle settles back. Higher is faster. */
@@ -159,6 +161,7 @@ export const HK416: WeaponSpec = {
   fireInterval: 0.071,
   reloadTime: 2.25,
   range: 200,
+  damage: 30,
   recoilKick: 0.017,
   recoilRecovery: 12.5,
   aimTime: 0.2,
@@ -184,6 +187,7 @@ export const AK47: WeaponSpec = {
   fireInterval: 0.1,
   reloadTime: 2.5,
   range: 220,
+  damage: 36,
   recoilKick: 0.028,
   recoilRecovery: 9.5,
   aimTime: 0.24,
@@ -209,6 +213,7 @@ export const SCAR_H: WeaponSpec = {
   fireInterval: 0.096,
   reloadTime: 2.45,
   range: 260,
+  damage: 44,
   recoilKick: 0.025,
   recoilRecovery: 10.5,
   aimTime: 0.23,
@@ -234,6 +239,7 @@ export const MP5: WeaponSpec = {
   fireInterval: 0.075,
   reloadTime: 2.05,
   range: 130,
+  damage: 24,
   recoilKick: 0.013,
   recoilRecovery: 14.5,
   aimTime: 0.17,
@@ -259,6 +265,7 @@ export const REMINGTON_870: WeaponSpec = {
   fireInterval: 0.8,
   reloadTime: 2.7,
   range: 55,
+  damage: 13,
   recoilKick: 0.068,
   recoilRecovery: 6.5,
   aimTime: 0.23,
@@ -284,6 +291,7 @@ export const AWM: WeaponSpec = {
   fireInterval: 1.35,
   reloadTime: 3.1,
   range: 450,
+  damage: 95,
   recoilKick: 0.082,
   recoilRecovery: 5.2,
   aimTime: 0.26,
@@ -310,6 +318,7 @@ export const M1911: WeaponSpec = {
   fireInterval: 0.13,
   reloadTime: 2.1,
   range: 100,
+  damage: 42,
   recoilKick: 0.032,
   recoilRecovery: 10,
   aimTime: 0.18,
@@ -335,6 +344,7 @@ export const DESERT_EAGLE: WeaponSpec = {
   fireInterval: 0.21,
   reloadTime: 2.35,
   range: 150,
+  damage: 55,
   recoilKick: 0.056,
   recoilRecovery: 7.2,
   aimTime: 0.22,

@@ -1,8 +1,10 @@
 # FPS Game
 
 A first-person shooter that runs in the browser. TypeScript, Three.js for rendering,
-Vite for dev and build, Vitest for tests. So far there is one small map (Shoot House),
-one weapon (the M1911 pistol) and steel targets to shoot. There are no enemies yet.
+Vite for dev and build, Vitest for tests. So far there is one map (Shoot House), eight
+weapons, and two game modes: **Firefight**, where six hostile combatants hold the
+compound, and **Steel Targets**, the plate course. Hostiles are simulated in core and
+drawn by `src/game/hostiles.ts`.
 
 Single-player for now. Multiplayer is planned for later, which is why the game rules
 are kept in `src/core` with no browser code: that part can later run on a server
@@ -144,13 +146,17 @@ src/
   call `Math.random`. It takes state, input and `dt`, and returns new state. ESLint
   enforces this. It is what makes gameplay unit-testable, replayable and later runnable
   on a server.
-- **A map is data.** `src/core/map.ts` describes a level as boxes, a spawn and
-  targets. Collision and rendering are both built from that one description. All
+- **A map is data.** `src/core/map.ts` describes a level as boxes, a spawn, steel
+  targets and hostile spawn points. Collision and rendering are both built from that one description. All
   solid geometry is axis-aligned boxes; that is why collision is 150 lines of our own
   code and not a physics library. Revisit that when a map needs ramps or rotated
   walls.
 - **Core returns events.** A step returns the new state plus what happened (shot,
-  target down, landed). `src/game` turns events into sound and effects.
+  target down, hostile hit, player damaged, landed). `src/game` turns events into sound
+  and effects.
+- **A mode is a spec, not a fork.** `src/core/mode.ts` says what a run contains
+  (objectives, hostiles, win condition); `game.ts` runs every mode through one step
+  function. Adding a mode means adding a `GameModeSpec`, not a second game loop.
 - **`src/game` depends on `core`, never the reverse.** It samples input, steps the
   simulation at a fixed 60 Hz, and draws the result.
 - **Units:** metres, seconds, radians. Right-handed, Y up. Yaw 0 looks down -Z.

@@ -1,5 +1,7 @@
 import type { GameState } from '../../core/game';
 import { runAccuracyPercent } from '../../core/game';
+import type { GameModeId, GameModeSpec } from '../../core/mode';
+import { GAME_MODES } from '../../core/mode';
 import type { Loadout } from '../../core/weapon';
 import { getWeaponSpec } from '../../core/weapon';
 import type { GameAudio } from '../audio';
@@ -7,6 +9,13 @@ import { el, formatRunTime } from './dom';
 import type { IconName } from './icons';
 import { createIcon } from './icons';
 import { createKeyHint } from './keycaps';
+
+/**
+ * One key press must only be consumed by the screen that was open when it was pressed.
+ * Opening a screen from the keyboard would otherwise hand the same Enter to the screen that
+ * has just appeared, which could start a mode the player never chose.
+ */
+const consumedKeys = new WeakSet<KeyboardEvent>();
 
 export interface MenuEntrySpec {
   readonly id: string;
@@ -66,14 +75,16 @@ function buildNavigableMenu(
   setFocused(0, false);
 
   window.addEventListener('keydown', (event) => {
-    if (!getActive()) return;
+    if (!getActive() || consumedKeys.has(event)) return;
     if (event.key === 'ArrowDown' || event.code === 'KeyS') {
       event.preventDefault();
       audio.start();
+      consumedKeys.add(event);
       setFocused(focusedIndex + 1, true);
     } else if (event.key === 'ArrowUp' || event.code === 'KeyW') {
       event.preventDefault();
       audio.start();
+      consumedKeys.add(event);
       setFocused(focusedIndex - 1, true);
     } else if (
       (event.key === 'Enter' || event.key === ' ') &&
@@ -81,6 +92,7 @@ function buildNavigableMenu(
     ) {
       event.preventDefault();
       audio.start();
+      consumedKeys.add(event);
       entries[focusedIndex]?.onSelect();
     }
   });
@@ -97,7 +109,11 @@ function buildNavigableMenu(
   };
 }
 
-export function createIntroScreen(container: HTMLElement, onFinish: () => void) {
+export function createIntroScreen(
+  container: HTMLElement,
+  onFinish: () => void,
+  counts: { readonly hostiles: number; readonly plates: number } = { hostiles: 6, plates: 14 },
+) {
   const intro = el('div', 'intro-screen');
   const card = el('div', 'intro-screen__card');
   const kicker = el('div', 'intro-screen__kicker');
@@ -107,8 +123,8 @@ export function createIntroScreen(container: HTMLElement, onFinish: () => void) 
   const meta = el('div', 'intro-screen__meta');
   meta.append(
     el('span', undefined, '52 m × 40 m Compound'),
-    el('span', undefined, '14 AR500 Targets'),
-    el('span', undefined, '8 Firearms Armory'),
+    el('span', undefined, `${String(counts.hostiles)} Hostiles`),
+    el('span', undefined, `${String(counts.plates)} AR500 Plates`),
   );
   const bar = el('div', 'intro-screen__bar');
   const fill = el('div', 'intro-screen__bar-fill');
@@ -155,6 +171,7 @@ export function createTitleScreen(
   audio: GameAudio,
   actions: {
     readonly onPlay: () => void;
+    readonly onModes: () => void;
     readonly onLoadout: () => void;
     readonly onSettings: () => void;
     readonly onControls: () => void;
@@ -173,19 +190,16 @@ export function createTitleScreen(
     el(
       'p',
       'title-lockup__subtitle',
-      'Clear fourteen high-contrast AR500 steel silhouettes across the CQB Breach House, Central Yard, and 38 m Sniper Lane.',
+      'Clear the CQB Breach House, Central Yard and 38 m Sniper Lane. Two ways in: hostile combatants, or steel plates.',
     ),
   );
 
   const specs = el('div', 'title-specs');
   const specLoadout = el('span', undefined, 'HK416 + M1911');
-  specs.append(
-    specLoadout,
-    el('span', 'title-specs__sep'),
-    el('span', undefined, '14 Targets'),
-    el('span', 'title-specs__sep'),
-    el('span', undefined, '3 Tactical Zones'),
-  );
+  const specMode = el('span', undefined, 'Firefight');
+  const specZones = el('span', undefined, '3 Tactical Zones');
+  specs.append(specLoadout, el('span', 'title-specs__sep'), specMode);
+  specs.append(el('span', 'title-specs__sep'), specZones);
   lockup.append(specs);
 
   let isActive = false;
@@ -200,6 +214,16 @@ export function createTitleScreen(
         onSelect: () => {
           audio.uiConfirm();
           actions.onPlay();
+        },
+      },
+      {
+        id: 'modes',
+        label: 'Game Modes',
+        icon: 'modes',
+        sublabel: 'Firefight · Steel Targets',
+        onSelect: () => {
+          audio.uiSelect();
+          actions.onModes();
         },
       },
       {
@@ -262,6 +286,174 @@ export function createTitleScreen(
       specLoadout.textContent = `${p} + ${s}`;
       nav.setSublabel('loadout', `${p} · ${s}`);
     },
+    syncMode(mode: GameModeSpec) {
+      specMode.textContent =
+        mode.id === 'firefight'
+          ? `${mode.name} · ${mode.enemies ? 'Hostiles' : ''}`
+          : `${mode.name} · ${mode.targets ? 'Plates' : ''}`;
+      nav.setSublabel('modes', mode.name);
+    },
+  };
+}
+
+/**
+ * The Game Modes screen. Every card is a real mode from the core mode table, and picking a
+ * card starts that mode: there is nothing listed here that does not deploy.
+ */
+export function createModesScreen(
+  container: HTMLElement,
+  audio: GameAudio,
+  actions: {
+    readonly onDeploy: (mode: GameModeId) => void;
+    readonly onBack: () => void;
+  },
+  counts: { readonly hostiles: number; readonly plates: number },
+) {
+  const screen = el('section', 'ui-screen modes-screen');
+  screen.dataset.active = 'false';
+  screen.setAttribute('aria-label', 'Game modes');
+
+  const header = el('header', 'ui-screen__header');
+  const titleBlock = el('div', 'ui-screen__title-block');
+  titleBlock.append(
+    el('span', 'ui-screen__eyebrow', 'Shoot House · Training Programme'),
+    el('h1', 'ui-screen__title', 'Game Modes'),
+  );
+  header.append(titleBlock);
+
+  const body = el('div', 'modes-screen__body');
+  const list = el('div', 'modes-list');
+  list.setAttribute('role', 'list');
+
+  const cards = GAME_MODES.map((mode, index) => {
+    const card = el('button', 'mode-card');
+    card.type = 'button';
+    card.dataset.entry = `mode-${mode.id}`;
+    card.dataset.mode = mode.id;
+    card.dataset.focused = index === 0 ? 'true' : 'false';
+    card.style.setProperty('--item-index', String(index));
+    card.setAttribute('role', 'listitem');
+
+    const indexTag = el('span', 'mode-card__index', String(index + 1).padStart(2, '0'));
+    const text = el('span', 'mode-card__body');
+    const name = el('span', 'mode-card__name', mode.name);
+    const objective = el('span', 'mode-card__objective', mode.objective);
+    const description = el('span', 'mode-card__description', mode.description);
+    text.append(name, objective, description);
+
+    const tags = el('span', 'mode-card__tags');
+    tags.append(
+      el(
+        'span',
+        'mode-card__tag',
+        mode.enemies
+          ? `${String(counts.hostiles)} hostiles`
+          : `${String(counts.plates)} steel plates`,
+      ),
+      el('span', 'mode-card__tag', mode.enemies ? 'You can be hit' : 'No return fire'),
+      el('span', 'mode-card__tag', 'Restarts when cleared'),
+    );
+
+    const action = el('span', 'mode-card__action', 'Deploy');
+    card.append(indexTag, text, tags, action);
+    list.append(card);
+    return card;
+  });
+
+  const back = el('button', 'ui-menu-btn modes-back');
+  back.type = 'button';
+  back.dataset.entry = 'modes-back';
+  back.dataset.focused = 'false';
+  back.append(createIcon('back'), el('span', undefined, 'Back to Title'));
+  list.append(back);
+
+  let focused = 0;
+  const stops = [...cards, back];
+  function setFocused(next: number, sound: boolean) {
+    const clamped = ((next % stops.length) + stops.length) % stops.length;
+    if (clamped !== focused && sound) audio.uiHover();
+    focused = clamped;
+    stops.forEach((node, idx) => {
+      node.dataset.focused = idx === focused ? 'true' : 'false';
+    });
+  }
+
+  function activate() {
+    const card = cards[focused];
+    const mode = card ? GAME_MODES[focused] : undefined;
+    if (mode) {
+      audio.uiConfirm();
+      actions.onDeploy(mode.id);
+    } else {
+      audio.uiBack();
+      actions.onBack();
+    }
+  }
+
+  stops.forEach((node, idx) => {
+    node.addEventListener('pointerenter', () => {
+      setFocused(idx, true);
+    });
+    node.addEventListener('click', () => {
+      audio.start();
+      setFocused(idx, false);
+      activate();
+    });
+  });
+
+  const brief = el('aside', 'modes-brief');
+  brief.append(el('div', 'modes-brief__heading', 'Before You Deploy'));
+  const briefList = el('ul', 'modes-brief__list');
+  for (const line of [
+    'Hostiles spot you by sight and by the sound of your rifle. Break the line of sight and they lose you.',
+    'Every hostile needs a clean line of sight before it can shoot. Walls stop bullets both ways.',
+    'You regenerate after five seconds out of contact. Standing in the open is how a run ends.',
+  ]) {
+    briefList.append(el('li', undefined, line));
+  }
+  brief.append(briefList);
+  body.append(list, brief);
+
+  const footer = el('footer', 'ui-screen__footer');
+  const hints = el('div', 'ui-screen__hints');
+  hints.append(
+    createKeyHint('↑ / ↓', 'Choose'),
+    createKeyHint('Enter', 'Deploy'),
+    createKeyHint('Esc', 'Back'),
+  );
+  footer.append(hints);
+
+  screen.append(header, body, footer);
+  container.append(screen);
+
+  window.addEventListener('keydown', (event) => {
+    if (screen.dataset.active !== 'true' || consumedKeys.has(event)) return;
+    if (event.key === 'ArrowDown' || event.code === 'KeyS') {
+      event.preventDefault();
+      consumedKeys.add(event);
+      setFocused(focused + 1, true);
+    } else if (event.key === 'ArrowUp' || event.code === 'KeyW') {
+      event.preventDefault();
+      consumedKeys.add(event);
+      setFocused(focused - 1, true);
+    } else if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      consumedKeys.add(event);
+      activate();
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      consumedKeys.add(event);
+      audio.uiBack();
+      actions.onBack();
+    }
+  });
+
+  return {
+    element: screen,
+    setActive(active: boolean) {
+      screen.dataset.active = active ? 'true' : 'false';
+      if (active) setFocused(0, false);
+    },
   };
 }
 
@@ -270,6 +462,7 @@ export function createPauseScreen(
   audio: GameAudio,
   actions: {
     readonly onResume: () => void;
+    readonly onModes: () => void;
     readonly onLoadout: () => void;
     readonly onRestart: () => void;
     readonly onSettings: () => void;
@@ -301,6 +494,16 @@ export function createPauseScreen(
         onSelect: () => {
           audio.uiConfirm();
           actions.onResume();
+        },
+      },
+      {
+        id: 'modes',
+        label: 'Game Modes',
+        icon: 'modes',
+        sublabel: 'Switch mode',
+        onSelect: () => {
+          audio.uiSelect();
+          actions.onModes();
         },
       },
       {
@@ -363,14 +566,15 @@ export function createPauseScreen(
   const valShots = el('span', 'pause-telemetry__value', '0');
   const valAccuracy = el('span', 'pause-telemetry__value', '0%');
 
+  const targetLabelEl = el('span', 'pause-telemetry__label', 'Targets');
   for (const [label, node] of [
-    ['Targets', valTargets],
-    ['Elapsed', valTime],
-    ['Shots', valShots],
-    ['Accuracy', valAccuracy],
+    [targetLabelEl, valTargets],
+    [el('span', 'pause-telemetry__label', 'Elapsed'), valTime],
+    [el('span', 'pause-telemetry__label', 'Shots'), valShots],
+    [el('span', 'pause-telemetry__label', 'Accuracy'), valAccuracy],
   ] as const) {
     const cell = el('div', 'pause-telemetry__cell');
-    cell.append(el('span', 'pause-telemetry__label', label), node);
+    cell.append(label, node);
     grid.append(cell);
   }
   telemetry.append(grid);
@@ -402,8 +606,13 @@ export function createPauseScreen(
       nav.setSublabel('loadout', `${p} · ${s}`);
     },
     syncTelemetry(state: GameState) {
+      const alive = state.enemies.filter((enemy) => enemy.behavior !== 'dead').length;
       const down = state.targetsDown.filter(Boolean).length;
-      valTargets.textContent = `${down} / ${state.targetsDown.length}`;
+      const hostiles = state.mode === 'firefight';
+      targetLabelEl.textContent = hostiles ? 'Hostiles' : 'Targets';
+      valTargets.textContent = hostiles
+        ? `${state.enemies.length - alive} / ${state.enemies.length}`
+        : `${down} / ${state.targetsDown.length}`;
       valTime.textContent = formatRunTime(state.run.elapsed);
       valShots.textContent = String(state.run.shotsFired);
       valAccuracy.textContent = `${runAccuracyPercent(state.run)}%`;

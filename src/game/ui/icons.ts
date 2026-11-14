@@ -24,7 +24,9 @@ export type IconName =
   | 'target'
   | 'mouseLeft'
   | 'mouseRight'
-  | 'mouseMove';
+  | 'mouseMove'
+  | 'modes'
+  | 'hostile';
 
 function svgRoot(viewBox: string, className?: string): SVGSVGElement {
   const svg = document.createElementNS(SVG_NS, 'svg');
@@ -141,6 +143,19 @@ export function createIcon(name: IconName, className = 'ui-icon'): SVGSVGElement
       break;
     case 'sprint':
       svg.append(strokePath('M4.5 6l4 4-4 4'), strokePath('M10 6l4 4-4 4'));
+      break;
+    case 'modes':
+      svg.append(
+        strokePath('M2.8 6.4h9.8v9.4H2.8V6.4Z'),
+        strokePath('M5.4 4.2h11.8v9.2'),
+        strokePath('M5.2 10h4.8M5.2 12.6h6.6'),
+      );
+      break;
+    case 'hostile':
+      svg.append(
+        strokePath('M10 3.6a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5Z'),
+        strokePath('M4.9 16.4c0-2.7 2.3-4.8 5.1-4.8s5.1 2.1 5.1 4.8'),
+      );
       break;
     case 'target':
       svg.append(

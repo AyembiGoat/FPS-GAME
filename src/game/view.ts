@@ -7,6 +7,7 @@ import type { OpticId, ScopeOverlayKind, WeaponId } from '../core/weapon';
 import { currentOpticZoom, OPTICS } from '../core/weapon';
 import type { GameAudio } from './audio';
 import { createEffects } from './effects';
+import { buildHostiles } from './hostiles';
 import { createViewmodel } from './weapons/viewmodel';
 import { buildWorld } from './world';
 
@@ -81,6 +82,7 @@ export function createView(map: GameMap, audio: GameAudio) {
   document.body.prepend(renderer.domElement);
 
   const world = buildWorld(map, renderer);
+  const hostiles = buildHostiles(map, world.scene);
   let baseFov = DEFAULT_FIELD_OF_VIEW;
   const camera = new THREE.PerspectiveCamera(baseFov, 1, 0.05, 3000);
   camera.rotation.order = 'YXZ';
@@ -156,6 +158,14 @@ export function createView(map: GameMap, audio: GameAudio) {
   }
 
   /** Where a point in the world sits between the ears: -1 left, 1 right. */
+  function distanceFrom(point: { x: number; y: number; z: number }): number {
+    return Math.hypot(
+      point.x - camera.position.x,
+      point.y - camera.position.y,
+      point.z - camera.position.z,
+    );
+  }
+
   function panOf(point: { x: number; y: number; z: number }): number {
     toSound.set(point.x, point.y, point.z).sub(camera.position).normalize();
     rightward.setFromMatrixColumn(camera.matrixWorld, 0);
@@ -205,10 +215,12 @@ export function createView(map: GameMap, audio: GameAudio) {
       syncCameraFov();
     },
 
-    resetTargets(state: GameState) {
+    /** Put every plate back up and every hostile back on its feet. */
+    resetRun(state: GameState) {
       state.targetsDown.forEach((down, idx) => {
         world.targets[idx]?.setDown(down);
       });
+      hostiles.reset(state);
       shadowsStale = true;
       shadowCooldown = 0;
     },
@@ -258,6 +270,7 @@ export function createView(map: GameMap, audio: GameAudio) {
             // Paint all pellet/bullet holes & dust, deduplicating simultaneous steel/surface audio.
             let playedSteel = false;
             let playedSurface = false;
+            let playedBody = false;
             for (const impact of event.hits) {
               effects.impact(impact.point, impact.normal, impact.surface);
               const pan = panOf(impact.point);
@@ -265,6 +278,11 @@ export function createView(map: GameMap, audio: GameAudio) {
                 if (!playedSteel) {
                   audio.steel(impact.distance, pan);
                   playedSteel = true;
+                }
+              } else if (impact.surface === 'enemy') {
+                if (!playedBody) {
+                  audio.hostileHit(impact.distance, pan);
+                  playedBody = true;
                 }
               } else if (!playedSurface) {
                 audio.impact(impact.distance, impact.surface, pan);
@@ -284,8 +302,23 @@ export function createView(map: GameMap, audio: GameAudio) {
           case 'target-down':
             world.targets[event.index]?.setDown(true);
             break;
-          case 'targets-reset':
+          case 'enemy-shot': {
+            hostiles.muzzle(event.index, state);
+            const pan = panOf(event.origin);
+            audio.hostileShot(distanceFrom(event.origin), pan);
+            break;
+          }
+          case 'enemy-killed': {
+            const body = state.enemies[event.index]?.position;
+            audio.hostileDown(event.distance, body ? panOf(body) : 0);
+            break;
+          }
+          case 'player-damaged':
+            audio.hitTaken();
+            break;
+          case 'run-reset':
             for (const target of world.targets) target.setDown(false);
+            hostiles.reset(state);
             break;
           case 'dry-fire':
             audio.dryFire();
@@ -485,6 +518,10 @@ export function createView(map: GameMap, audio: GameAudio) {
         shadowCooldown = 0;
       }
       targetsWereMoving = anyTargetMoving;
+
+      if (hostiles.sync(state, dt)) {
+        shadowsStale = true;
+      }
 
       effects.update(dt);
 
