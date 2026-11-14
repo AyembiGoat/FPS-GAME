@@ -14,7 +14,15 @@ it.
 1. **The owner gave one.** Use it. Do not generate alternatives, restyle it or
    "improve" it. If it is unclear from some angle, ask, or generate extra views that
    match it.
-2. **The owner gave none.** Generate one, following the steps below, every time.
+2. **UI, HUD, menus, and typography (`src/game/ui`).** Never generate AI reference
+   images for UI—image generators produce garbled text, sci-fi clichés, and muddy
+   layouts. Instead, search the web for real screenshots from shipped AAA games,
+   save them into gitignored `reference/ui/`, open and inspect every image, and write
+   down concrete craft observations (hierarchy, safe margins, surfaces, states, motion)
+   in `reference/ui-notes.md` before writing code. Study craft; never copy another
+   game's logos, icons, or layout verbatim.
+3. **3D models, weapons, props, and materials (when the owner gave none).** Generate
+   a reference image following the steps below, every time.
 
 ## Generating a reference
 

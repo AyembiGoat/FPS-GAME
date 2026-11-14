@@ -17,23 +17,26 @@ I remove it? If the honest answer is "it looks cooler" or "nothing", remove it.
 
 ## UI and HUD
 
-| Default                                                                 | Instead                                                      |
-| ----------------------------------------------------------------------- | ------------------------------------------------------------ |
-| Glow lines, neon borders, outer glow on text and panels                 | Flat shapes. Contrast from value and size                    |
-| Purple-to-blue gradients, cyan and purple accents on near-black         | The palette in the art direction. One accent, used rarely    |
-| Gradient-filled text                                                    | Solid colour                                                 |
-| Glass panels: blur, translucency, soft border                           | No panel, or an opaque one, if the text needs backing        |
-| Corner brackets, scan lines, hex grids, fake readouts, decorative ticks | Only marks that carry information                            |
-| Emoji as icons                                                          | One drawn icon set, or text                                  |
-| Pulsing, shimmering, breathing or floating loops                        | Motion only in response to an event (damage, reload, pickup) |
-| Fade-and-slide entrance on every element                                | Appear. Animate only what explains a change                  |
-| Everything in a rounded card with the same radius and soft shadow       | Group with space and alignment                               |
-| All-caps labels with wide letter spacing above every value              | Label only what is ambiguous without one                     |
-| A big number with a small label and an accent bar                       | Size by how often the player needs it mid-fight              |
-| Middle dots between items, arrows after button text                     | Plain words                                                  |
+The UI uses a grounded tactical design system (`reference/ui-notes.md`): layered dark
+gunmetal surfaces, `1px` machined hairlines, locally bundled condensed + grotesk type
+with tabular numerals, custom SVG icons on a shared grid, one warm brass accent used
+sparingly, and responsive deceleration motion. What separates crafted game UI from AI
+slop is restraint and real state:
 
-A HUD is read in a fraction of a second during a fight. Every element competes with
-the enemy on screen. Fewer, flatter and smaller wins.
+| Slop default                                                           | Crafted UI rule                                                                |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Neon borders, permanent bloom, purple-to-cyan gradients, gradient text | Neutral gunmetal palette (`tokens.css`) + one primary accent (`--ui-accent`)   |
+| Heavy `backdrop-filter` blur on every HUD box                          | Feathered dark gradients on per-frame HUD; blur only once on modal backdrops   |
+| Sci-fi hex grids, meaningless radar rings, fake telemetry readouts     | Crisp `1px` hairlines and corner ticks that frame real game state              |
+| Emoji as icons, or mismatched icon stroke weights                      | Custom inline SVGs on one grid (`20x20`) and stroke weight (`1.6px`)           |
+| Infinite pulsing, breathing, or floating idle loops                    | Fast ease-out transitions (`120–340ms`) triggered by real events or focus      |
+| Motion that ignores accessibility or triggers layout reflows           | Animate `transform` and `opacity` only; collapse movement under Reduced Motion |
+| Native browser `<input type="range">` or `<select>` dumped in a modal  | Custom sliders, segmented pills, swatches, and drawn keycaps with keyboard nav |
+| Jittering proportional digits in timers, ammo counts, and sliders      | `font-variant-numeric: tabular-nums` on every live number                      |
+
+A HUD is read in a fraction of a second during a fight. Keep the central sightline clear,
+anchor HUD modules to consistent safe margins, and ensure legibility over both sunlit
+concrete/sky and dark shadow.
 
 ## Rendering and effects
 

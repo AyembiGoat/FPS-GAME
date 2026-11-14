@@ -1,11 +1,11 @@
 // Plays the game in a real browser and saves screenshots to playtest/.
 //
-//   npm run playtest                  every feature, then the bot clears the map
+//   npm run playtest                  every feature, UI screens, then the bot clears the map
 //   npm run playtest -- --quick       spawn screenshot only
 //   npm run playtest -- --materials   every texture side by side, nothing else
 //   npm run playtest -- --weapon      the gun and hands from four sides, nothing else
-//   npm run playtest -- --keep before copy the screenshots to playtest/before/ afterwards,
-//                                     to compare against after a change
+//   npm run playtest -- --keep after  copy the screenshots to playtest/after/ afterwards,
+//                                     to compare against an earlier run
 //
 // Exits non-zero if the page logs an error, a feature check fails, or the bot
 // cannot clear the map.
@@ -34,6 +34,46 @@ if (preview) {
     await shot('01-spawn');
 
     if (!quick) {
+      // Verify Title, Settings, Controls, and Pause UI screens plus settings persistence.
+      await game.page.evaluate(() => window.__fps.openScreen('title'));
+      await new Promise((r) => setTimeout(r, 240));
+      await shot('00-title-menu');
+      const titleEntries = await game.page.$$eval('.title-screen .ui-menu-btn', (btns) =>
+        btns.map((b) => b.getAttribute('data-entry')),
+      );
+      check(
+        'title menu shows play, settings, controls',
+        JSON.stringify(titleEntries) === JSON.stringify(['play', 'settings', 'controls']),
+      );
+
+      await game.page.evaluate(() => window.__fps.openScreen('settings'));
+      await new Promise((r) => setTimeout(r, 220));
+      await shot('12-settings-screen');
+      const updatedSettings = await game.page.evaluate(() =>
+        window.__fps.settings({ fov: 90, crosshairColor: 'brass' }),
+      );
+      const savedInStorage = await game.page.evaluate(() =>
+        window.localStorage.getItem('fps.settings.v1'),
+      );
+      check(
+        'settings apply and persist to localStorage',
+        updatedSettings.fov === 90 &&
+          updatedSettings.crosshairColor === 'brass' &&
+          Boolean(savedInStorage && savedInStorage.includes('"fov":90')),
+      );
+      await game.page.evaluate(() => window.__fps.settings({ fov: 78, crosshairColor: 'white' }));
+
+      await game.page.evaluate(() => window.__fps.openScreen('controls'));
+      await new Promise((r) => setTimeout(r, 220));
+      await shot('13-controls-screen');
+      const keycapCount = await game.page.$$eval(
+        '.controls-screen .ui-keycap, .controls-screen .ui-mouse-badge',
+        (els) => els.length,
+      );
+      check('controls screen renders keycaps and mouse badges', keycapCount >= 12);
+
+      await game.page.evaluate(() => window.__fps.openScreen('playing'));
+
       // A person's first ten seconds: walk forward, fire, reload.
       await game.step({ forward: 1 }, 45);
       await shot('02-walking');
@@ -91,15 +131,33 @@ if (preview) {
       await game.step({}, 30);
       check('stands back up', (await game.state()).player.lean === 0);
 
+      // Pause overlay during an active run.
+      await game.page.evaluate(() => window.__fps.openScreen('pause'));
+      await new Promise((r) => setTimeout(r, 220));
+      await shot('14-pause-menu');
+      const pauseEntries = await game.page.$$eval('.pause-screen .ui-menu-btn', (btns) =>
+        btns.map((b) => b.getAttribute('data-entry')),
+      );
+      check(
+        'pause menu shows resume, restart, settings, controls, quit',
+        JSON.stringify(pauseEntries) ===
+          JSON.stringify(['resume', 'restart', 'settings', 'controls', 'quit']),
+      );
+      await game.page.evaluate(() => {
+        window.__fps.restart();
+        window.__fps.openScreen('playing');
+      });
+
       // Loudness, measured without speakers. Each value is a fraction of the gunshot.
       summary.loudness = await game.loudness();
       check('reload is much quieter than a shot', summary.loudness.reload < 0.2);
+      check('ui cues are subtle relative to gunfire', summary.loudness.uiConfirm < 0.15);
       check(
         'every sound makes some sound',
         Object.values(summary.loudness).every((v) => v > 0),
       );
 
-      // Then the bot plays the rest. A screenshot after every target that goes down.
+      // Then the bot plays a clean run from spawn. A screenshot after every target that goes down.
       let steps = 0;
       let down = 0;
       let botLeaned = false;
@@ -118,10 +176,18 @@ if (preview) {
         }
         if (state.targetsDown.every(Boolean)) break;
       }
+      await game.step({}, 10);
+      await new Promise((r) => setTimeout(r, 240));
       const state = await game.state();
       summary.botSeconds = steps / 60;
+      summary.runElapsed = +state.run.elapsed.toFixed(2);
+      summary.runShots = state.run.shotsFired;
       summary.targetsDown = `${state.targetsDown.filter(Boolean).length} / ${state.targetsDown.length}`;
       check('bot cleared the map', state.targetsDown.every(Boolean));
+      check(
+        'run telemetry recorded elapsed time and hits',
+        state.run.elapsed > 0 && state.run.targetHits === 10,
+      );
       check('bot aimed', botAimed);
       summary.botLeaned = botLeaned;
       await shot('06-cleared');

@@ -5,7 +5,10 @@ A first-person shooter that runs in the browser, built with TypeScript and Three
 **Status: first playable slice.** One small map, Shoot House, with walls you cannot
 walk through, an M1911 pistol held in two hands, and ten steel targets that fall when
 hit and stand back up once all are down. You can aim down the sights and lean round
-corners. Single-player. There are no enemies yet.
+corners. Includes a live 3D title screen, pause overlay, persisted settings (sensitivity,
+ADS sensitivity, FOV, volume, crosshair colour & size, HUD scale, reduced motion),
+controls reference, and full tactical HUD with run telemetry. Single-player. There are
+no enemies yet.
 
 ## Quick start
 
@@ -16,7 +19,7 @@ npm install
 npm run dev
 ```
 
-Open the printed URL and click to capture the mouse.
+Open the printed URL and select **Play** from the title screen to capture the mouse.
 
 | Input              | Action              |
 | ------------------ | ------------------- |
@@ -64,14 +67,16 @@ Add `?bot` to the URL to watch the bot play.
 
 ```
 src/
-  core/       Game rules: movement, collision, weapon, targets, bot. Pure and unit tested
+  core/       Game rules: movement, collision, weapon, targets, run stats, bot. Pure and unit tested
   core/maps/  Levels, as data
-  game/       Browser shell: rendering, input, HUD
+  game/       Browser shell: rendering, input, audio, UI
+  game/ui/         Title, pause, settings, controls, and tactical HUD
   game/materials/  The shared texture library
   game/weapons/    Gun models and the arms that hold them
-  game/audio/      Sound
+  game/audio/      Procedural Web Audio synthesis
+public/fonts/ Bundled open-licensed UI fonts (Barlow & Barlow Condensed, SIL OFL)
 scripts/      Headless-browser playtest
-reference/    The reference images the visuals were built from
+reference/    Reference notes and images the visuals were built from
 .agents/      Playbooks (skills) for AI agents, indexed in skills.md
 AGENTS.md     Rules and architecture for anyone changing the code
 ```
@@ -81,9 +86,9 @@ fixed 60 Hz and the renderer interpolates between steps, so the game behaves the
 at any frame rate and can be tested without a screen. Lint rules enforce the boundary.
 It is also what will let the same rules run on a server when multiplayer is added.
 
-Everything on screen is generated at start-up: the pistol and arms are built in code,
-surfaces come from one shared texture library and sounds are synthesised. There are no
-asset files yet.
+The 3D pistol, arms, world surfaces, and synthesised audio are generated in code at
+start-up, while UI typography is served locally from `public/fonts/` with zero CDN
+requests.
 
 ## Working with AI agents
 

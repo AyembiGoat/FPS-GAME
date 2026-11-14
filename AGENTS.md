@@ -79,10 +79,12 @@ very different ways.
 Full list and reasoning: [`no-slop`](.agents/skills/no-slop/SKILL.md). The short
 version:
 
-- **Visuals.** No glow lines, neon outlines or bloom as decoration. No purple-to-blue
-  gradients, gradient text, glass panels, pulsing or shimmering loops, or sci-fi HUD
-  ornaments that carry no information. No emoji as icons. An effect has to tell the
-  player something.
+- **Visuals.** In the 3D world, no glow lines, neon outlines or bloom as decoration. No
+  purple-to-blue gradients, gradient text, pulsing or shimmering loops, or sci-fi
+  ornaments that carry no information. In the UI (`src/game/ui`), dark gunmetal panels,
+  restrained gradients, sparse modal blur, custom SVG icons, and event-driven motion are
+  used intentionally per `reference/ui-notes.md`; every mark and animation still has to
+  earn its place by communicating state or hierarchy. No emoji as icons anywhere.
 - **Game.** No button, stat, menu entry or setting that is not wired to something
   real. No invented names (see [Names](#names)) or lore filler. No effect stack (shake, flare, vignette,
   chromatic aberration) added to make a moment feel bigger.
@@ -99,19 +101,23 @@ Train Yard. Never invent a brand-sounding name such as "Apex Gun", "Viper X" or 
 Arena". If a thing has no established name, use a plain description and ask the owner.
 The same goes for code: `pistol`, `wall`, `target`, not `armament` or `entity manager`.
 
-### Art direction: grounded and plain
+### Art direction: grounded world, precision tactical UI
 
-This is the working direction, chosen by an agent while building the first slice. The
-owner can change it at any time; nobody else should.
-
-- The world looks like a real place in natural daylight: concrete, plywood, steel,
+- The 3D world looks like a real place in natural daylight: concrete, plywood, steel,
   wood. Colour comes from materials and the sun, not from coloured lights.
 - Weapons are real firearms, modelled to their real dimensions.
-- The HUD is plain white text in the system font with a soft shadow for legibility.
-  No panels, frames or icons. It shows only what the player needs mid-fight.
-- Effects are brief and physical: a muzzle flash, an ejected case, dust and a hole
+- World effects are brief and physical: a muzzle flash, an ejected case, dust and a hole
   where a round lands. Nothing lingers and nothing glows.
-- Sound follows physics where it is cheap to: distant hits arrive late.
+- Sound follows physics where it is cheap to: distant hits arrive late, and subtle
+  synthesised UI cues sit well below gameplay gunfire.
+- The UI (`src/game/ui`, specified in `reference/ui-notes.md`) uses a grounded tactical
+  range aesthetic inspired by modern military shooters: dark gunmetal surfaces, crisp
+  `1px` hairlines, locally bundled `Barlow Condensed` + `Barlow` with tabular numerals,
+  one warm cartridge-brass accent (`#E5A93C`) used sparingly alongside semantic confirm,
+  warning, and danger colours, custom 20px-grid SVG icons and M1911 silhouette, and
+  fast deceleration motion (`transform`/`opacity`, honouring Reduced Motion). Sparse
+  `backdrop-filter` is allowed on static modal backdrops (Pause, Settings, Controls),
+  never on per-frame HUD elements.
 
 ## Reference images
 
@@ -119,9 +125,12 @@ Every visual asset starts from a reference image. Full steps:
 [`reference-images`](.agents/skills/reference-images/SKILL.md).
 
 - If the owner provides a reference, use it as given.
-- If not, generate 3 to 5 candidates, look at each one, and build from the best. If
-  none is good, generate again. Never build from a weak reference.
-- Use GPT Image when you can choose the model. Do not use Qwen Image.
+- For **3D world assets, weapons, props, and materials**, generate 3 to 5 candidates
+  (prefer GPT Image; never Qwen Image), look at each one, and build from the best.
+- For **UI, HUD, and menus**, never generate AI UI mockups (image models invent muddy
+  text and sci-fi slop). Collect real screenshots from shipped AAA games into
+  gitignored `reference/ui/` and record the craft analysis in `reference/ui-notes.md`
+  before writing code.
 
 ## Architecture
 
