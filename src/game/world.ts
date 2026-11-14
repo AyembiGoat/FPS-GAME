@@ -72,6 +72,8 @@ const FALLEN_ANGLE = -Math.PI / 2 + 0.03;
 export interface TargetView {
   /** Start falling over, or stand back up. */
   setDown(down: boolean): void;
+  /** Stand the plate up at once, with no animation. */
+  reset(): void;
   /** Advance the falling animation. Returns true while the plate is moving. */
   update(dt: number): boolean;
 }
@@ -121,6 +123,11 @@ function buildTargets(map: GameMap, scene: THREE.Scene): TargetView[] {
         down = value;
         // The bullet gives the plate its first shove.
         speed = value ? -5 : 0;
+      },
+      reset() {
+        down = false;
+        speed = 0;
+        hinge.rotation.x = 0;
       },
       update(dt) {
         const before = hinge.rotation.x;

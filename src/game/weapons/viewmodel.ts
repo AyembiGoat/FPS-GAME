@@ -144,6 +144,19 @@ export function createViewmodel(model: WeaponModel, environment: THREE.Texture |
       }
     },
 
+    /** Back to rest, with no spent cases in the air. Used when a run starts over. */
+    reset() {
+      kick = 0;
+      kickVelocity = 0;
+      slideTime = 0;
+      flashTime = 0;
+      flash.visible = false;
+      for (const casing of casings) {
+        casing.life = 0;
+        casing.mesh.visible = false;
+      }
+    },
+
     update(dt: number, frame: ViewmodelFrame) {
       kickVelocity += (-380 * kick - 26 * kickVelocity) * dt;
       kick += kickVelocity * dt;

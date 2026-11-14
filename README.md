@@ -7,6 +7,10 @@ walk through, an M1911 pistol held in two hands, and ten steel targets that fall
 hit and stand back up once all are down. You can aim down the sights and lean round
 corners. Single-player. There are no enemies yet.
 
+In front of the game is a main menu: Profile, Loadout, Skins, and Maps and game modes.
+Loadout, skins, characters and the other maps and modes are layout only, labelled "Not
+in the game yet". The player name and finished runs are real and kept in the browser.
+
 ## Quick start
 
 Requires Node.js 22 or newer.
@@ -16,7 +20,8 @@ npm install
 npm run dev
 ```
 
-Open the printed URL and click to capture the mouse.
+Open the printed URL. The menu appears; pick Maps and game modes, press Start, then
+click to capture the mouse.
 
 | Input              | Action              |
 | ------------------ | ------------------- |
@@ -30,20 +35,22 @@ Open the printed URL and click to capture the mouse.
 | Left Shift         | Sprint              |
 | Esc                | Pause               |
 
-Add `?bot` to the URL to watch the bot play.
+Add `?bot` to the URL to watch the bot play. The automatic modes (`?auto`, `?bot`,
+`?materials`, `?weapon`) skip the menu.
 
 ## Commands
 
-| Command             | What it does                                                            |
-| ------------------- | ----------------------------------------------------------------------- |
-| `npm run dev`       | Start the dev server with hot reload                                    |
-| `npm run check`     | Typecheck, lint, format check, test and build                           |
-| `npm run typecheck` | TypeScript in strict mode                                               |
-| `npm run lint`      | ESLint with type-aware rules and architecture checks                    |
-| `npm run format`    | Format everything with Prettier                                         |
-| `npm run test`      | Run unit tests once (`test:watch` to keep running)                      |
-| `npm run build`     | Production build into `dist/`                                           |
-| `npm run playtest`  | Play the game in a headless browser and save screenshots to `playtest/` |
+| Command              | What it does                                                                                                                                              |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run dev`        | Start the dev server with hot reload                                                                                                                      |
+| `npm run check`      | Typecheck, lint, format check, test and build                                                                                                             |
+| `npm run typecheck`  | TypeScript in strict mode                                                                                                                                 |
+| `npm run lint`       | ESLint with type-aware rules and architecture checks                                                                                                      |
+| `npm run format`     | Format everything with Prettier                                                                                                                           |
+| `npm run test`       | Run unit tests once (`test:watch` to keep running)                                                                                                        |
+| `npm run build`      | Production build into `dist/`                                                                                                                             |
+| `npm run playtest`   | Play the game in a headless browser and save screenshots to `playtest/`                                                                                   |
+| `npm run menu:check` | Visit every menu section in a headless browser, save screenshots to `playtest/menu/` and check the name, runs and starting a map (needs `npm run dev` up) |
 
 `npm run check` is the gate. CI runs the same steps on every pull request
 (`.github/workflows/ci.yml`).
@@ -67,6 +74,7 @@ src/
   core/       Game rules: movement, collision, weapon, targets, bot. Pure and unit tested
   core/maps/  Levels, as data
   game/       Browser shell: rendering, input, HUD
+  game/menu/  The main menu, and the data it lists in content.ts
   game/materials/  The shared texture library
   game/weapons/    Gun models and the arms that hold them
   game/audio/      Sound

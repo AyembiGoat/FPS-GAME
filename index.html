@@ -61,36 +61,57 @@
       #weapon-name {
         font-size: 14px;
       }
+      /* The pause screen, shown whenever the mouse is not captured during a run. */
       #overlay {
         position: fixed;
         inset: 0;
+        z-index: 1;
         display: grid;
         place-items: center;
         background: rgb(0 0 0 / 60%);
         cursor: pointer;
+      }
+      #overlay > div {
+        text-align: center;
       }
       #overlay h1 {
         margin: 0 0 20px;
         font-size: 34px;
         font-weight: 600;
       }
-      #overlay dl {
-        display: grid;
-        grid-template-columns: auto auto;
-        gap: 6px 20px;
-        margin: 0 0 24px;
-        font-size: 15px;
-      }
-      #overlay dt {
-        text-align: right;
-        opacity: 0.7;
-      }
-      #overlay dd {
-        margin: 0;
+      #pause-controls {
+        margin-bottom: 24px;
+        text-align: left;
       }
       #overlay p {
-        margin: 0;
+        margin: 0 0 16px;
         font-size: 17px;
+      }
+      .pause-buttons {
+        display: flex;
+        justify-content: center;
+        gap: 10px;
+      }
+      .pause-buttons button {
+        padding: 9px 22px;
+        border: 1px solid #fff;
+        background: none;
+        color: #fff;
+        font: inherit;
+        font-size: 15px;
+        cursor: pointer;
+      }
+      .pause-buttons button:hover {
+        background: rgb(255 255 255 / 15%);
+      }
+      .pause-buttons button.primary {
+        background: #fff;
+        color: #111;
+      }
+      .notice {
+        margin: 14px 0 0;
+        color: #d8a35f;
+        font-size: 14px;
       }
       [hidden] {
         display: none !important;
@@ -112,32 +133,21 @@
       <div id="rounds"></div>
       <div id="weapon-name"></div>
     </div>
-    <div id="overlay">
+    <div id="overlay" hidden>
       <div>
-        <h1>Shoot House</h1>
-        <dl>
-          <dt>Move</dt>
-          <dd>W A S D</dd>
-          <dt>Look</dt>
-          <dd>Mouse</dd>
-          <dt>Fire</dt>
-          <dd>Left click</dd>
-          <dt>Aim</dt>
-          <dd>Right click (hold)</dd>
-          <dt>Lean</dt>
-          <dd>Q and E (hold)</dd>
-          <dt>Reload</dt>
-          <dd>R</dd>
-          <dt>Jump</dt>
-          <dd>Space</dd>
-          <dt>Sprint</dt>
-          <dd>Left Shift</dd>
-          <dt>Pause</dt>
-          <dd>Esc</dd>
-        </dl>
-        <p>Click to play</p>
+        <h1>Paused</h1>
+        <div id="pause-controls"></div>
+        <p>Click anywhere, or Keep playing, to carry on.</p>
+        <div class="pause-buttons">
+          <button id="to-resume" type="button">Keep playing</button>
+          <button id="to-menu" type="button">Back to menu</button>
+        </div>
+        <p id="pause-notice" class="notice" hidden>
+          The browser did not give the game the mouse. Click again.
+        </p>
       </div>
     </div>
+    <div id="menu" hidden></div>
     <script type="module" src="/src/game/main.ts"></script>
   </body>
 </html>

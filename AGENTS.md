@@ -142,6 +142,13 @@ src/
   walls.
 - **Core returns events.** A step returns the new state plus what happened (shot,
   target down, landed). `src/game` turns events into sound and effects.
+- **The menu is browser shell.** Pages are built in `src/game/menu`; every label,
+  loadout slot, attachment, skin, map and mode it lists is an entry in
+  `content.ts`, so adding one is a one-line change and the navigation grows on its
+  own. Anything the simulation does not have yet is listed with `available: false`
+  and drawn as "Not in the game yet"; it is never selectable and never changes a
+  game. `?auto`, `?bot`, `?materials` and `?weapon` skip the menu, because the
+  playtest drives those.
 - **`src/game` depends on `core`, never the reverse.** It samples input, steps the
   simulation at a fixed 60 Hz, and draws the result.
 - **Units:** metres, seconds, radians. Right-handed, Y up. Yaw 0 looks down -Z.

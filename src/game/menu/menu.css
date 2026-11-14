@@ -1,0 +1,274 @@
+/*
+ * The main menu. Plain boxes and plain text, matching the HUD: no panels that float,
+ * no glow, no motion. The layout is what is being judged, so keep colour to text,
+ * borders and one marker for anything the game does not have yet.
+ */
+
+#menu {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  overflow-y: auto;
+  background: #0e0e0e;
+  color: #f2f2f2;
+  font-family: system-ui, sans-serif;
+  font-size: 14px;
+  user-select: none;
+}
+
+.menu-nav {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  padding: 0 32px;
+  border-bottom: 1px solid #2e2e2e;
+}
+
+.nav-button {
+  margin-bottom: -1px;
+  padding: 14px 16px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: #a8a8a8;
+  font: inherit;
+  cursor: pointer;
+}
+
+.nav-button:hover {
+  color: #fff;
+}
+
+.nav-button.selected {
+  border-bottom-color: #fff;
+  color: #fff;
+}
+
+.menu-name {
+  margin-left: auto;
+  align-self: center;
+  color: #a8a8a8;
+  font-size: 13px;
+}
+
+.menu-body {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 24px 32px 32px;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.split {
+  display: grid;
+  gap: 16px;
+  align-items: start;
+}
+
+.split-2 {
+  grid-template-columns: 1fr 1fr;
+}
+
+.split-loadout {
+  grid-template-columns: 300px 1fr;
+}
+
+.split-skins {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.panel {
+  padding: 14px 16px 16px;
+  border: 1px solid #333;
+  background: #151515;
+}
+
+.panel h2 {
+  margin: 0 0 12px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.options.two {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid #3a3a3a;
+  background: #1c1c1c;
+  color: #eee;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.option:hover:not(:disabled) {
+  border-color: #666;
+}
+
+.option.placeholder {
+  color: #b9b9b9;
+  cursor: not-allowed;
+}
+
+.option.selected {
+  border-color: #f2f2f2;
+  background: #f2f2f2;
+  color: #111;
+}
+
+.option-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.option-detail {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.tag {
+  flex: none;
+  color: #b09163;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.empty {
+  margin: 0;
+  color: #9a9a9a;
+}
+
+.hint {
+  margin: 10px 0 0;
+  color: #9a9a9a;
+  font-size: 12px;
+}
+
+.summary {
+  margin: 0 0 12px;
+  font-size: 15px;
+}
+
+.text-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid #3a3a3a;
+  background: #1c1c1c;
+  color: #eee;
+  font: inherit;
+}
+
+.text-input:focus {
+  border-color: #f2f2f2;
+  outline: none;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 16px;
+  margin: 0;
+  font-size: 13px;
+}
+
+.stats dt {
+  color: #9a9a9a;
+}
+
+.stats dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.runs {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.runs th {
+  padding: 0 8px 6px 0;
+  white-space: nowrap;
+  border-bottom: 1px solid #333;
+  color: #9a9a9a;
+  font-size: 12px;
+  font-weight: 400;
+  text-align: left;
+}
+
+.runs td {
+  padding: 7px 8px 7px 0;
+  border-bottom: 1px solid #262626;
+  white-space: nowrap;
+}
+
+.figure {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  height: 236px;
+  border: 1px dashed #3a3a3a;
+  color: #7d7d7d;
+  font-size: 12px;
+}
+
+.start-button {
+  padding: 11px 32px;
+  border: 1px solid #f2f2f2;
+  background: #f2f2f2;
+  color: #111;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.start-button:hover:not(:disabled) {
+  background: #fff;
+}
+
+.start-button:disabled {
+  border-color: #3a3a3a;
+  background: #1c1c1c;
+  color: #6d6d6d;
+  cursor: not-allowed;
+}
+
+.controls {
+  display: grid;
+  grid-template-columns: repeat(3, auto 1fr);
+  gap: 6px 16px;
+  margin: 0;
+  font-size: 13px;
+}
+
+.controls dt {
+  color: #9a9a9a;
+}
+
+.controls dd {
+  margin: 0;
+}

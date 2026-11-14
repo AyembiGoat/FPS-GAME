@@ -47,6 +47,15 @@ export function createEffects(scene: THREE.Scene) {
   const normalVector = new THREE.Vector3();
 
   return {
+    /** Take every hole and dust puff off the map. Used when a run starts over. */
+    clear() {
+      for (const hole of holes) hole.visible = false;
+      for (const puff of puffs) {
+        puff.life = 0;
+        puff.sprite.visible = false;
+      }
+    },
+
     impact(point: Vec3, normal: Vec3, surface: SurfaceMaterial | 'target') {
       normalVector.set(normal.x, normal.y, normal.z);
 

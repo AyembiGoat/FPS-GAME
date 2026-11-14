@@ -152,6 +152,20 @@ export function createView(map: GameMap, audio: GameAudio) {
     /** Current magnification, so mouse speed can be scaled to match. */
     zoom: () => zoom,
 
+    /** Put the world back the way it is at the spawn, for a fresh run. */
+    reset() {
+      for (const target of world.targets) target.reset();
+      effects.clear();
+      viewmodel.reset();
+      landOffset = 0;
+      landVelocity = 0;
+      walked = 0;
+      lastStride = 0;
+      lastYaw = map.spawn.yaw;
+      lastPitch = 0;
+      lastPosition.set(map.spawn.position.x, 0, map.spawn.position.z);
+    },
+
     /** React to what happened in one simulation step. */
     handle(events: readonly GameEvent[], state: GameState) {
       for (const event of events) {
