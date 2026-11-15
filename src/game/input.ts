@@ -1,8 +1,20 @@
+import type { ConsumableRequest } from '../core/consumables';
 import type { GameInput } from '../core/game';
 import type { WeaponSlot } from '../core/weapon';
 
 const BASE_MOUSE_SENSITIVITY = 0.0021;
 const SCROLL_SWITCH_DEBOUNCE_MS = 140;
+
+/** Keys that start using a healing or boost item. */
+const CONSUMABLE_KEYS: Readonly<Record<string, ConsumableRequest>> = {
+  KeyH: 'best-heal',
+  KeyB: 'best-boost',
+  Digit7: 'med-kit',
+  Digit8: 'first-aid',
+  Digit9: 'bandage',
+  Digit0: 'energy-drink',
+  Minus: 'painkiller',
+};
 
 export type InputMode = 'hold' | 'toggle';
 
@@ -11,7 +23,8 @@ export type InputMode = 'hold' | 'toggle';
  *
  * Presses are latched until the next simulation step reads them, so a click that
  * goes down and up between two steps still fires. Supports wired Hold/Toggle Aim,
- * Hold/Toggle Lean, and Primary/Secondary weapon switching via 1/2 or scroll wheel.
+ * Hold/Toggle Lean, Primary/Secondary weapon switching via 1/2 or scroll wheel,
+ * healing and boost items on H, B and 7 to minus, and picking up on F.
  */
 export function createHumanInput(canvas: HTMLCanvasElement) {
   const held = new Set<string>();
@@ -30,6 +43,8 @@ export function createHumanInput(canvas: HTMLCanvasElement) {
   let leanToggled: -1 | 0 | 1 = 0;
   let pendingSwitch: WeaponSlot | null = null;
   let pendingZoomToggle = false;
+  let pendingConsumable: ConsumableRequest | null = null;
+  let pendingInteract = false;
   let activeSlotHint: WeaponSlot = 'primary';
   let lastWheelAt = 0;
 
@@ -53,6 +68,9 @@ export function createHumanInput(canvas: HTMLCanvasElement) {
       if (event.code === 'Digit1') requestSlot('primary');
       if (event.code === 'Digit2') requestSlot('secondary');
       if (event.code === 'KeyV') pendingZoomToggle = true;
+      const consumable = CONSUMABLE_KEYS[event.code];
+      if (consumable) pendingConsumable = consumable;
+      if (event.code === 'KeyF') pendingInteract = true;
       if (event.code === 'KeyR') aimToggled = false;
       if (leanMode === 'toggle') {
         if (event.code === 'KeyQ') leanToggled = leanToggled === -1 ? 0 : -1;
@@ -106,6 +124,8 @@ export function createHumanInput(canvas: HTMLCanvasElement) {
       leanToggled = 0;
       pendingSwitch = null;
       pendingZoomToggle = false;
+      pendingConsumable = null;
+      pendingInteract = false;
     }
   });
 
@@ -161,12 +181,16 @@ export function createHumanInput(canvas: HTMLCanvasElement) {
         toggleZoom: pendingZoomToggle,
         lean: leanMode === 'toggle' ? leanToggled : axis('KeyE', 'KeyQ'),
         switchSlot: pendingSwitch,
+        useConsumable: pendingConsumable,
+        interact: pendingInteract,
         yawDelta: yaw,
         pitchDelta: pitch,
       };
       pressed.clear();
       pendingSwitch = null;
       pendingZoomToggle = false;
+      pendingConsumable = null;
+      pendingInteract = false;
       yaw = 0;
       pitch = 0;
       return input;

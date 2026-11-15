@@ -1,6 +1,16 @@
 import type { Box } from './collision';
 import { bodyBox, raycast } from './collision';
-import type { EnemyState, HitZone } from './enemy';
+import type {
+  ConsumableCancelReason,
+  ConsumableId,
+  ConsumableInventory,
+  ConsumableRequest,
+  ConsumableUse,
+} from './consumables';
+import { BOOST_TUNING, sanitizeConsumables, stepSurvival } from './consumables';
+import type { ArmourPiece, ArmourState, HitZone, Vitals } from './damage';
+import { applyDamage, createArmour } from './damage';
+import type { EnemyState } from './enemy';
 import {
   alertEnemiesByGunshot,
   createEnemy,
@@ -9,6 +19,8 @@ import {
   raycastEnemies,
   stepEnemies,
 } from './enemy';
+import type { LootItem, LootRefusal, LootSpawn } from './loot';
+import { applyLoot, lootRefusal, nearestLoot } from './loot';
 import type { GameMap, MapId, SurfaceMaterial, TargetSpawn } from './map';
 import type { GameModeId } from './modes';
 import { DEFAULT_GAME_MODE, getGameModeSpec, GUN_GAME_LADDER } from './modes';
@@ -28,17 +40,22 @@ import type {
 import {
   createWeapon,
   DEFAULT_LOADOUT,
-  effectiveWeaponSpec,
   equipLoadout,
   equipSingleWeapon,
   getWeaponSpec,
+  loadoutWeaponSpec,
   pelletDirections,
-  resolveWeaponOptic,
   stepWeapon,
   weaponProjectileDamage,
 } from './weapon';
 
-export type GameInput = PlayerInput & WeaponInput;
+export type GameInput = PlayerInput &
+  WeaponInput & {
+    /** One-shot request to use a healing or boost item (a specific one, or the best carried). */
+    readonly useConsumable?: ConsumableRequest | null;
+    /** One-shot request to pick up the item lying within reach. */
+    readonly interact?: boolean;
+  };
 export type MatchOutcome = 'ongoing' | 'victory' | 'defeat';
 
 export interface RunStats {
@@ -58,6 +75,32 @@ export interface RunStats {
   readonly damageTaken: number;
 }
 
+/** Something the damage model can hurt. */
+export type EntityRef =
+  | { readonly kind: 'player' }
+  | { readonly kind: 'enemy'; readonly id: string }
+  | { readonly kind: 'dummy'; readonly index: number };
+
+/** Health and armour of a damageable practice dummy. */
+export interface TargetVitals extends Vitals {
+  /** Seconds left in which the player may see this dummy's health after hurting it. */
+  readonly revealRemaining: number;
+}
+
+/** The hurt enemy or dummy under the player's sights, for the aimed health readout. */
+export interface AimedTarget {
+  readonly entity: EntityRef;
+  readonly health: number;
+  readonly maxHealth: number;
+}
+
+export const TARGET_HEALTH_REVEAL = {
+  /** Seconds an enemy's health stays readable after the player last hurt it. Game balance. */
+  seconds: 10,
+  /** How far the sights must be raised (0..1) before the readout appears. */
+  minAim: 0.6,
+} as const;
+
 export interface GameState {
   readonly mode: GameModeId;
   readonly mapId: MapId;
@@ -67,6 +110,20 @@ export interface GameState {
   readonly player: PlayerState;
   readonly playerHealth: number;
   readonly playerMaxHealth: number;
+  /** Vest and helmet the player is wearing. */
+  readonly playerArmour: ArmourState;
+  /** 0..100 boost meter; above 25 it slowly restores health. */
+  readonly playerBoost: number;
+  /** Carried healing and boost items: five fixed integer counts. */
+  readonly consumables: ConsumableInventory;
+  /** True for each of the map's loot items already taken (`[]` in modes without loot). */
+  readonly lootTaken: readonly boolean[];
+  /** Index into the map's loot of the item the pick-up key would take now, or `null`. */
+  readonly nearbyLoot: number | null;
+  /** Why `nearbyLoot` cannot be taken, or `null` when it can (or nothing is in reach). */
+  readonly nearbyLootRefusal: LootRefusal | null;
+  /** The item being applied right now, or `null`. The weapon cannot fire while this is set. */
+  readonly consumableUse: ConsumableUse | null;
   /** Unit horizontal vector pointing FROM player TOWARD last attacker (`null` until hit). */
   readonly lastDamageDir: Vec3 | null;
   /** Normalized `0..1` incoming damage flinch/vignette pulse that decays cleanly. */
@@ -76,6 +133,10 @@ export interface GameState {
   readonly enemies: readonly EnemyState[];
   /** True for each steel target knocked down (`[]` when `mode !== 'practice'`). */
   readonly targetsDown: readonly boolean[];
+  /** Health and armour per target; `null` for a steel plate that drops to any hit. */
+  readonly targetVitals: readonly (TargetVitals | null)[];
+  /** Hurt enemy or dummy under the raised sights, or `null`. */
+  readonly aimedTarget: AimedTarget | null;
   /** Seconds until steel targets stand back up in `'practice'` mode; 0 otherwise. */
   readonly resetIn: number;
   /** Telemetry for the current run. */
@@ -100,8 +161,12 @@ export type GameEvent =
       readonly direction: Vec3;
       /** Primary impact (first ray or first pellet that connected). */
       readonly hit: ShotImpact | null;
-      /** Every projectile impact for this shot (1 for rifles/pistols, up to 8 for buckshot). */
+      /** Every projectile impact for this shot (1 for rifles/pistols, one per pellet for shot). */
       readonly hits: readonly ShotImpact[];
+      /** True when a suppressor is fitted: the report is quieter and duller. */
+      readonly suppressed: boolean;
+      /** Multiplier on the visible muzzle flash (0 = hidden by a flash hider). */
+      readonly muzzleFlash: number;
     }
   | {
       readonly type: 'enemy-shot';
@@ -137,10 +202,54 @@ export type GameEvent =
     }
   | {
       readonly type: 'player-hit';
+      /** Health lost after armour. */
       readonly damage: number;
       readonly healthRemaining: number;
       readonly fromDirection: Vec3;
+      readonly zone: HitZone;
+      /** Armour piece that took part of the hit, or `null`. */
+      readonly armour: ArmourPiece | null;
     }
+  | {
+      /** A hit on anything with health. Emitted alongside the older per-kind events. */
+      readonly type: 'entity-damaged';
+      readonly entity: EntityRef;
+      readonly point: Vec3;
+      /** Most valuable zone struck by this trigger pull. */
+      readonly zone: HitZone;
+      /** Health lost after armour. */
+      readonly damage: number;
+      /** Damage soaked up by armour. */
+      readonly absorbed: number;
+      /** Armour piece that took part of the hit, or `null`. */
+      readonly armour: ArmourPiece | null;
+      readonly healthRemaining: number;
+      readonly maxHealth: number;
+      readonly distance: number;
+      readonly killed: boolean;
+    }
+  | {
+      readonly type: 'entity-down';
+      readonly entity: EntityRef;
+      readonly weaponId: WeaponId;
+      readonly headshot: boolean;
+      readonly distance: number;
+    }
+  | { readonly type: 'armor-broken'; readonly entity: EntityRef; readonly piece: ArmourPiece }
+  | { readonly type: 'consumable-start'; readonly id: ConsumableId; readonly duration: number }
+  | {
+      readonly type: 'consumable-complete';
+      readonly id: ConsumableId;
+      readonly health: number;
+      readonly boost: number;
+    }
+  | {
+      readonly type: 'consumable-cancel';
+      readonly id: ConsumableId;
+      readonly reason: ConsumableCancelReason;
+    }
+  | { readonly type: 'loot-taken'; readonly index: number; readonly item: LootItem }
+  | { readonly type: 'loot-refused'; readonly index: number; readonly reason: LootRefusal }
   | { readonly type: 'player-down' }
   | { readonly type: 'mode-victory'; readonly mode: GameModeId }
   | { readonly type: 'target-down'; readonly index: number; readonly distance: number }
@@ -161,7 +270,84 @@ export const TARGET = {
   /** Depth of the stand the player collides with. */
   standDepth: 0.3,
   resetDelay: 3,
+  /**
+   * Damageable dummies have no separate head box: a hit in the upper third of the silhouette
+   * (measured from `bodyBottom` to `headTop`) counts as a headshot.
+   */
+  dummyHeadShare: 1 / 3,
 } as const;
+
+/** Zone struck on a damageable dummy by a hit at world height `y`. */
+export function dummyHitZone(y: number): HitZone {
+  const height = TARGET.headTop - TARGET.bodyBottom;
+  return y >= TARGET.headTop - height * TARGET.dummyHeadShare ? 'head' : 'torso';
+}
+
+function createTargetVitals(spawn: TargetSpawn): TargetVitals | null {
+  if (spawn.health === undefined || spawn.health <= 0) return null;
+  return {
+    health: spawn.health,
+    maxHealth: spawn.health,
+    armour: createArmour(spawn.vest ?? 0, spawn.helmet ?? 0),
+    revealRemaining: 0,
+  };
+}
+
+/** Damage one trigger pull has done to one target so far. */
+interface PendingHit {
+  readonly vitals: Vitals;
+  readonly healthLost: number;
+  readonly absorbed: number;
+  readonly zone: HitZone;
+  readonly point: Vec3;
+  readonly distance: number;
+  readonly armour: ArmourPiece | null;
+  readonly broken: readonly ArmourPiece[];
+  readonly killed: boolean;
+}
+
+/** Fold one more projectile into the running total for a target. */
+function addProjectileHit(
+  previous: PendingHit | undefined,
+  target: Vitals,
+  rawDamage: number,
+  zone: HitZone,
+  armourPiercing: number,
+  point: Vec3,
+  distance: number,
+): PendingHit {
+  const before = previous?.vitals ?? target;
+  const result = applyDamage(before, rawDamage, zone, armourPiercing);
+  const vitals: Vitals = {
+    health: result.health,
+    maxHealth: before.maxHealth,
+    armour: result.armour,
+  };
+  if (!previous) {
+    return {
+      vitals,
+      healthLost: result.healthLost,
+      absorbed: result.absorbed,
+      zone,
+      point,
+      distance,
+      armour: result.piece,
+      broken: result.broken ? [result.broken] : [],
+      killed: result.killed,
+    };
+  }
+  return {
+    vitals,
+    healthLost: previous.healthLost + result.healthLost,
+    absorbed: previous.absorbed + result.absorbed,
+    zone: previous.zone === 'head' || zone === 'head' ? 'head' : previous.zone,
+    point: previous.point,
+    distance: Math.min(previous.distance, distance),
+    armour: previous.armour ?? result.piece,
+    broken: result.broken ? [...previous.broken, result.broken] : previous.broken,
+    killed: previous.killed || result.killed,
+  };
+}
 
 function slab(spawn: TargetSpawn, width: number, depth: number, bottom: number, top: number): Box {
   const { x, z } = spawn.position;
@@ -201,10 +387,71 @@ export function aimDirection(yaw: number, pitch: number): Vec3 {
 }
 
 export function activeWeaponSpec(state: GameState): EffectiveWeaponSpec {
-  return effectiveWeaponSpec(
-    state.weapon.weaponId,
-    resolveWeaponOptic(state.weapon.loadout, state.weapon.weaponId),
-  );
+  return loadoutWeaponSpec(state.weapon.loadout, state.weapon.weaponId);
+}
+
+const PLAYER_ENTITY: EntityRef = { kind: 'player' };
+
+/**
+ * The enemy or dummy the raised sights rest on, if the player hurt it recently enough for its
+ * health to be readable. Walls block the readout exactly as they block a bullet.
+ */
+function findAimedTarget(
+  player: PlayerState,
+  weapon: WeaponState,
+  range: number,
+  map: GameMap,
+  enemies: readonly EnemyState[],
+  targetsDown: readonly boolean[],
+  targetVitals: readonly (TargetVitals | null)[],
+): AimedTarget | null {
+  const anyEnemy = enemies.some((enemy) => enemy.alive && enemy.revealRemaining > 0);
+  const anyDummy = targetVitals.some((vitals) => vitals !== null && vitals.revealRemaining > 0);
+  if (!anyEnemy && !anyDummy) return null;
+
+  const origin = eyePosition(player);
+  const direction = aimDirection(player.yaw + weapon.recoilYaw, player.pitch + weapon.recoil);
+  const wallHit = raycast(origin, direction, range, map.solids);
+  const maxDist = wallHit ? wallHit.distance : range;
+
+  if (anyEnemy) {
+    const enemyHit = raycastEnemies(origin, direction, maxDist, enemies);
+    const enemy = enemyHit ? enemies[enemyHit.enemyIndex] : undefined;
+    if (enemy && enemy.revealRemaining > 0) {
+      return {
+        entity: { kind: 'enemy', id: enemy.id },
+        health: enemy.health,
+        maxHealth: enemy.maxHealth,
+      };
+    }
+  }
+
+  if (anyDummy) {
+    let best: AimedTarget | null = null;
+    let bestDistance = maxDist;
+    for (let index = 0; index < map.targets.length; index++) {
+      const spawn = map.targets[index];
+      const vitals = targetVitals[index];
+      if (!spawn || !vitals || targetsDown[index] || vitals.revealRemaining <= 0) continue;
+      const hit = raycast(origin, direction, bestDistance, targetHitBoxes(spawn));
+      if (!hit) continue;
+      bestDistance = hit.distance;
+      best = {
+        entity: { kind: 'dummy', index },
+        health: vitals.health,
+        maxHealth: vitals.maxHealth,
+      };
+    }
+    return best;
+  }
+  return null;
+}
+
+const NO_LOOT: readonly LootSpawn[] = [];
+
+/** The loot that lies in the level in this mode. */
+function modeLoot(map: GameMap, usesLoot: boolean): readonly LootSpawn[] {
+  return usesLoot ? (map.loot ?? NO_LOOT) : NO_LOOT;
 }
 
 export const INITIAL_RUN_STATS: RunStats = {
@@ -233,13 +480,23 @@ function hasRunAction(input: GameInput): boolean {
     input.fire ||
     input.aim ||
     input.reload ||
-    Boolean(input.switchSlot)
+    Boolean(input.switchSlot) ||
+    Boolean(input.useConsumable) ||
+    Boolean(input.interact)
   );
 }
 
 export interface CreateGameOptions {
   readonly mode?: GameModeId;
   readonly seed?: number;
+  /** Vest level to start with; none by default, since armour is picked up. */
+  readonly vest?: number;
+  /** Helmet level to start with; none by default. */
+  readonly helmet?: number;
+  /** Healing and boost items to start with; none by default, since items are picked up. */
+  readonly consumables?: ConsumableInventory;
+  /** Boost meter to start with (0..100); defaults to 0. */
+  readonly boost?: number;
 }
 
 export function createGame(
@@ -279,11 +536,20 @@ export function createGame(
     player: createPlayer(map.spawn.position, map.spawn.yaw),
     playerHealth: modeSpec.playerMaxHealth,
     playerMaxHealth: modeSpec.playerMaxHealth,
+    playerArmour: createArmour(options.vest ?? 0, options.helmet ?? 0),
+    playerBoost: Math.min(BOOST_TUNING.max, Math.max(0, options.boost ?? 0)),
+    consumables: sanitizeConsumables(options.consumables),
+    lootTaken: modeLoot(map, modeSpec.usesLoot).map(() => false),
+    nearbyLoot: null,
+    nearbyLootRefusal: null,
+    consumableUse: null,
     lastDamageDir: null,
     damagePulse: 0,
     weapon: initialWeapon,
     enemies: spawnedEnemies,
     targetsDown: spawnedTargets,
+    targetVitals: modeSpec.usesEnemies ? [] : map.targets.map(createTargetVitals),
+    aimedTarget: null,
     resetIn: 0,
     run: INITIAL_RUN_STATS,
     rngState: seed,
@@ -335,10 +601,13 @@ export function stepGame(
   let outcome = state.outcome;
   let gunGameTier = state.gunGameTier;
   let playerHealth = state.playerHealth;
+  let playerArmour = state.playerArmour;
+  let playerDamaged = false;
   let lastDamageDir = state.lastDamageDir;
   let damagePulse = Math.max(0, state.damagePulse - dt * 2.4);
   let enemies: EnemyState[] = [...state.enemies];
   let targetsDown = state.targetsDown;
+  let targetVitals = state.targetVitals;
   let resetIn = state.resetIn;
   let { elapsed, active, shotsFired, targetHits, enemiesDown, headshots, damageTaken } = state.run;
 
@@ -347,6 +616,7 @@ export function stepGame(
     resetIn = Math.max(0, resetIn - dt);
     if (resetIn === 0) {
       targetsDown = targetsDown.map(() => false);
+      targetVitals = map.targets.map(createTargetVitals);
       elapsed = 0;
       active = false;
       shotsFired = 0;
@@ -371,6 +641,9 @@ export function stepGame(
         ...state,
         damagePulse,
         enemies: deadEnemyStep.enemies,
+        aimedTarget: null,
+        nearbyLoot: null,
+        nearbyLootRefusal: null,
         rngState: rng.getState(),
       },
       events,
@@ -407,16 +680,24 @@ export function stepGame(
   if (playerStep.jumped) events.push({ type: 'jump' });
   if (playerStep.landedSpeed !== null) events.push({ type: 'land', speed: playerStep.landedSpeed });
 
-  const weaponStep = stepWeapon(state.weapon, effectiveInput, dt);
-  let nextWeaponState = weaponStep.state;
-  const spec = effectiveWeaponSpec(
-    nextWeaponState.weaponId,
-    resolveWeaponOptic(nextWeaponState.loadout, nextWeaponState.weaponId),
+  // Applying a healing or boost item ties up the hands: the weapon cannot fire until it is done.
+  const usingItem = state.consumableUse !== null;
+  const pulledTrigger = usingItem && input.fire && !state.weapon.triggerHeld;
+  const weaponStep = stepWeapon(
+    state.weapon,
+    usingItem ? { ...effectiveInput, fire: false } : effectiveInput,
+    dt,
   );
+  let nextWeaponState = usingItem
+    ? { ...weaponStep.state, triggerHeld: input.fire }
+    : weaponStep.state;
+  const spec = loadoutWeaponSpec(nextWeaponState.loadout, nextWeaponState.weaponId);
   let resolvedThisStep = false;
+  let switchedWeapon = false;
 
   for (const event of weaponStep.events) {
     if (event === 'weapon-switch') {
+      switchedWeapon = true;
       events.push({
         type: 'weapon-switch',
         weaponId: nextWeaponState.weaponId,
@@ -443,9 +724,10 @@ export function stepGame(
 
     const origin = eyePosition(player);
     const shotPitch = player.pitch + state.weapon.recoil;
-    const baseDirection = aimDirection(player.yaw, shotPitch);
+    const shotYaw = player.yaw + state.weapon.recoilYaw;
+    const baseDirection = aimDirection(shotYaw, shotPitch);
     const directions = pelletDirections(
-      player.yaw,
+      shotYaw,
       shotPitch,
       spec,
       state.weapon.aim,
@@ -453,26 +735,28 @@ export function stepGame(
     );
 
     if (modeSpec.usesEnemies) {
-      // Alert nearby combatants to unsuppressed gunfire.
-      enemies = alertEnemiesByGunshot(enemies, player.position, modeSpec.tuning);
+      // Alert combatants within earshot; quieter weapons carry less far.
+      enemies = alertEnemiesByGunshot(
+        enemies,
+        player.position,
+        modeSpec.tuning,
+        spec.noiseRadiusScale,
+      );
 
       const hits: ShotImpact[] = [];
       let connectedEnemyThisTriggerPull = false;
 
-      // Accumulate damage per enemy across multi-pellet buckshot or single rifle projectile.
-      const pendingDamage = new Map<
-        number,
-        { damage: number; bestZone: HitZone; point: Vec3; distance: number }
-      >();
+      // Damage per enemy across multi-pellet buckshot or a single rifle projectile.
+      const pendingDamage = new Map<number, PendingHit>();
 
       for (const direction of directions) {
         const wallHit = raycast(origin, direction, spec.range, map.solids);
         const maxDist = wallHit ? wallHit.distance : spec.range;
         const enemyHit = raycastEnemies(origin, direction, maxDist, enemies);
+        const struck = enemyHit ? enemies[enemyHit.enemyIndex] : undefined;
 
-        if (enemyHit) {
+        if (enemyHit && struck) {
           connectedEnemyThisTriggerPull = true;
-          const dmg = weaponProjectileDamage(spec, enemyHit.distance, enemyHit.zone);
           hits.push({
             point: enemyHit.point,
             normal: enemyHit.normal,
@@ -480,23 +764,18 @@ export function stepGame(
             surface: 'enemy',
             hitZone: enemyHit.zone,
           });
-          const prev = pendingDamage.get(enemyHit.enemyIndex);
-          if (!prev) {
-            pendingDamage.set(enemyHit.enemyIndex, {
-              damage: dmg,
-              bestZone: enemyHit.zone,
-              point: enemyHit.point,
-              distance: enemyHit.distance,
-            });
-          } else {
-            pendingDamage.set(enemyHit.enemyIndex, {
-              damage: prev.damage + dmg,
-              bestZone:
-                prev.bestZone === 'head' || enemyHit.zone === 'head' ? 'head' : prev.bestZone,
-              point: prev.point,
-              distance: Math.min(prev.distance, enemyHit.distance),
-            });
-          }
+          pendingDamage.set(
+            enemyHit.enemyIndex,
+            addProjectileHit(
+              pendingDamage.get(enemyHit.enemyIndex),
+              struck,
+              weaponProjectileDamage(spec, enemyHit.distance, enemyHit.zone),
+              enemyHit.zone,
+              spec.armourPiercing,
+              enemyHit.point,
+              enemyHit.distance,
+            ),
+          );
         } else if (wallHit) {
           const mapSolid = map.solids[wallHit.index];
           if (mapSolid) {
@@ -517,6 +796,8 @@ export function stepGame(
         direction: baseDirection,
         hit: hits[0] ?? null,
         hits,
+        suppressed: spec.suppressed,
+        muzzleFlash: spec.muzzleFlashScale,
       });
 
       if (connectedEnemyThisTriggerPull && !resolvedBeforeStep && !resolvedThisStep) {
@@ -526,21 +807,42 @@ export function stepGame(
       for (const [enemyIdx, info] of pendingDamage) {
         const targetEnemy = enemies[enemyIdx];
         if (!targetEnemy) continue;
-        const applied = damageEnemy(targetEnemy, info.damage, player.position, modeSpec.tuning);
-        enemies[enemyIdx] = applied.enemy;
+        const applied = damageEnemy(targetEnemy, info.healthLost, player.position, modeSpec.tuning);
+        enemies[enemyIdx] = {
+          ...applied.enemy,
+          armour: info.vitals.armour,
+          revealRemaining: TARGET_HEALTH_REVEAL.seconds,
+        };
+        const entity: EntityRef = { kind: 'enemy', id: targetEnemy.id };
         events.push({
           type: 'enemy-hit',
           enemyId: targetEnemy.id,
           point: info.point,
-          zone: info.bestZone,
-          damage: Math.round(info.damage),
+          zone: info.zone,
+          damage: Math.round(info.healthLost),
           killed: applied.killed,
           distance: info.distance,
         });
+        events.push({
+          type: 'entity-damaged',
+          entity,
+          point: info.point,
+          zone: info.zone,
+          damage: info.healthLost,
+          absorbed: info.absorbed,
+          armour: info.armour,
+          healthRemaining: applied.enemy.health,
+          maxHealth: targetEnemy.maxHealth,
+          distance: info.distance,
+          killed: applied.killed,
+        });
+        for (const piece of info.broken) {
+          events.push({ type: 'armor-broken', entity, piece });
+        }
 
         if (applied.killed) {
           enemiesDown++;
-          const wasHeadshot = info.bestZone === 'head';
+          const wasHeadshot = info.zone === 'head';
           if (wasHeadshot) headshots++;
           const remaining = enemies.filter((e) => e.alive).length;
           events.push({
@@ -549,6 +851,13 @@ export function stepGame(
             headshot: wasHeadshot,
             distance: info.distance,
             remaining,
+          });
+          events.push({
+            type: 'entity-down',
+            entity,
+            weaponId: spec.id,
+            headshot: wasHeadshot,
+            distance: info.distance,
           });
 
           if (modeSpec.usesWeaponLadder && outcome === 'ongoing') {
@@ -583,7 +892,7 @@ export function stepGame(
         }
       }
     } else {
-      // Dedicated Practice mode (reactive AR500 steel silhouettes).
+      // Practice mode: steel plates drop to any hit, dummies take damage like a combatant.
       const targetIndexes = map.targets.flatMap((_, index) =>
         targetsDown[index] ? [] : [index, index],
       );
@@ -594,21 +903,41 @@ export function stepGame(
 
       const hits: ShotImpact[] = [];
       const knockedThisShot = new Map<number, number>();
+      const pendingDamage = new Map<number, PendingHit>();
+      let connectedThisTriggerPull = false;
 
       for (const direction of directions) {
         const hit = raycast(origin, direction, spec.range, raySolids);
         if (!hit) continue;
         const mapSolid = map.solids[hit.index];
         const point = add(origin, scale(direction, hit.distance));
+        const targetIndex = targetIndexes[hit.index - map.solids.length];
+        const dummy = targetIndex === undefined ? null : (targetVitals[targetIndex] ?? null);
+        const zone = dummy ? dummyHitZone(point.y) : undefined;
         hits.push({
           point,
           normal: hit.normal,
           distance: hit.distance,
-          surface: mapSolid ? mapSolid.material : 'target',
+          surface: mapSolid ? mapSolid.material : dummy ? 'enemy' : 'target',
+          ...(zone ? { hitZone: zone } : {}),
         });
 
-        const targetIndex = targetIndexes[hit.index - map.solids.length];
-        if (targetIndex !== undefined && !knockedThisShot.has(targetIndex)) {
+        if (targetIndex === undefined) continue;
+        connectedThisTriggerPull = true;
+        if (dummy && zone) {
+          pendingDamage.set(
+            targetIndex,
+            addProjectileHit(
+              pendingDamage.get(targetIndex),
+              dummy,
+              weaponProjectileDamage(spec, hit.distance, zone),
+              zone,
+              spec.armourPiercing,
+              point,
+              hit.distance,
+            ),
+          );
+        } else if (!knockedThisShot.has(targetIndex)) {
           knockedThisShot.set(targetIndex, hit.distance);
         }
       }
@@ -620,12 +949,53 @@ export function stepGame(
         direction: baseDirection,
         hit: hits[0] ?? null,
         hits,
+        suppressed: spec.suppressed,
+        muzzleFlash: spec.muzzleFlashScale,
       });
 
-      if (knockedThisShot.size > 0) {
-        if (!resolvedBeforeStep && !resolvedThisStep) {
-          targetHits++;
+      if (connectedThisTriggerPull && !resolvedBeforeStep && !resolvedThisStep) {
+        targetHits++;
+      }
+
+      if (pendingDamage.size > 0) {
+        const nextVitals = [...targetVitals];
+        for (const [targetIndex, info] of pendingDamage) {
+          const entity: EntityRef = { kind: 'dummy', index: targetIndex };
+          nextVitals[targetIndex] = {
+            ...info.vitals,
+            revealRemaining: TARGET_HEALTH_REVEAL.seconds,
+          };
+          events.push({
+            type: 'entity-damaged',
+            entity,
+            point: info.point,
+            zone: info.zone,
+            damage: info.healthLost,
+            absorbed: info.absorbed,
+            armour: info.armour,
+            healthRemaining: info.vitals.health,
+            maxHealth: info.vitals.maxHealth,
+            distance: info.distance,
+            killed: info.killed,
+          });
+          for (const piece of info.broken) {
+            events.push({ type: 'armor-broken', entity, piece });
+          }
+          if (info.killed) {
+            knockedThisShot.set(targetIndex, info.distance);
+            events.push({
+              type: 'entity-down',
+              entity,
+              weaponId: spec.id,
+              headshot: info.zone === 'head',
+              distance: info.distance,
+            });
+          }
         }
+        targetVitals = nextVitals;
+      }
+
+      if (knockedThisShot.size > 0) {
         targetsDown = targetsDown.map((down, index) => down || knockedThisShot.has(index));
         for (const [targetIndex, distance] of knockedThisShot) {
           events.push({ type: 'target-down', index: targetIndex, distance });
@@ -666,8 +1036,16 @@ export function stepGame(
 
       if (eShot.hitPlayer && outcome === 'ongoing' && playerHealth > 0) {
         if (!active) active = true;
-        const appliedDamage = Math.min(playerHealth, eShot.damageToPlayer);
-        playerHealth = Math.max(0, playerHealth - appliedDamage);
+        const struck = applyDamage(
+          { health: playerHealth, maxHealth: state.playerMaxHealth, armour: playerArmour },
+          eShot.damageToPlayer,
+          eShot.zone,
+          eShot.armourPiercing,
+        );
+        const appliedDamage = struck.healthLost;
+        playerHealth = struck.health;
+        playerArmour = struck.armour;
+        playerDamaged = true;
         damageTaken += appliedDamage;
         damagePulse = Math.min(1, damagePulse + 0.55);
 
@@ -682,7 +1060,25 @@ export function stepGame(
           damage: appliedDamage,
           healthRemaining: playerHealth,
           fromDirection: dirFrom,
+          zone: eShot.zone,
+          armour: struck.piece,
         });
+        events.push({
+          type: 'entity-damaged',
+          entity: PLAYER_ENTITY,
+          point: eShot.endPoint,
+          zone: eShot.zone,
+          damage: appliedDamage,
+          absorbed: struck.absorbed,
+          armour: struck.piece,
+          healthRemaining: playerHealth,
+          maxHealth: state.playerMaxHealth,
+          distance: dLen,
+          killed: struck.killed,
+        });
+        if (struck.broken) {
+          events.push({ type: 'armor-broken', entity: PLAYER_ENTITY, piece: struck.broken });
+        }
 
         if (playerHealth === 0) {
           outcome = 'defeat';
@@ -693,6 +1089,75 @@ export function stepGame(
       }
     }
   }
+
+  // Picking up the item within reach. Decided from where the player stood when the key went
+  // down, so the prompt the player saw is the item they get.
+  let consumables = state.consumables;
+  let lootTaken = state.lootTaken;
+  const loot = modeLoot(map, modeSpec.usesLoot);
+  if (input.interact && outcome === 'ongoing' && state.nearbyLoot !== null) {
+    const spawn = loot[state.nearbyLoot];
+    if (spawn && !lootTaken[state.nearbyLoot]) {
+      const reason = lootRefusal(spawn.item, consumables, playerArmour);
+      if (reason) {
+        events.push({ type: 'loot-refused', index: state.nearbyLoot, reason });
+      } else {
+        const picked = applyLoot(spawn.item, consumables, playerArmour);
+        consumables = picked.inventory;
+        playerArmour = picked.armour;
+        const takenIndex = state.nearbyLoot;
+        lootTaken = lootTaken.map((taken, index) => taken || index === takenIndex);
+        events.push({ type: 'loot-taken', index: takenIndex, item: spawn.item });
+      }
+    }
+  }
+  const nearbyLoot =
+    outcome === 'ongoing' && loot.length > 0 ? nearestLoot(loot, lootTaken, player.position) : null;
+  const nearbySpawn = nearbyLoot === null ? undefined : loot[nearbyLoot];
+  const nearbyLootRefusal = nearbySpawn
+    ? lootRefusal(nearbySpawn.item, consumables, playerArmour)
+    : null;
+
+  // Healing items, boost drain and boost regeneration.
+  const survival = stepSurvival(
+    {
+      health: playerHealth,
+      maxHealth: state.playerMaxHealth,
+      boost: state.playerBoost,
+      inventory: consumables,
+      use: state.consumableUse,
+    },
+    {
+      request: outcome === 'ongoing' ? (input.useConsumable ?? null) : null,
+      fired: pulledTrigger,
+      damaged: playerDamaged,
+      switched: switchedWeapon,
+    },
+    dt,
+  );
+  playerHealth = survival.state.health;
+  for (const event of survival.events) events.push(event);
+
+  // Health readouts fade a fixed time after the player last hurt the target.
+  if (targetVitals.some((vitals) => vitals !== null && vitals.revealRemaining > 0)) {
+    targetVitals = targetVitals.map((vitals) =>
+      vitals === null || vitals.revealRemaining === 0
+        ? vitals
+        : { ...vitals, revealRemaining: Math.max(0, vitals.revealRemaining - dt) },
+    );
+  }
+  const aimedTarget =
+    nextWeaponState.aim >= TARGET_HEALTH_REVEAL.minAim
+      ? findAimedTarget(
+          player,
+          nextWeaponState,
+          spec.range,
+          map,
+          enemies,
+          targetsDown,
+          targetVitals,
+        )
+      : null;
 
   if (active && !resolvedBeforeStep && !resolvedThisStep) {
     elapsed += dt;
@@ -718,11 +1183,20 @@ export function stepGame(
       player,
       playerHealth,
       playerMaxHealth: state.playerMaxHealth,
+      playerArmour,
+      playerBoost: survival.state.boost,
+      consumables: survival.state.inventory,
+      lootTaken,
+      nearbyLoot,
+      nearbyLootRefusal,
+      consumableUse: survival.state.use,
       lastDamageDir,
       damagePulse,
       weapon: nextWeaponState,
       enemies,
       targetsDown,
+      targetVitals,
+      aimedTarget,
       resetIn,
       run,
       rngState: rng.getState(),

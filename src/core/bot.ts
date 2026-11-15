@@ -11,6 +11,7 @@
 
 import type { Box } from './collision';
 import { bodyBox, overlaps, raycast } from './collision';
+import { CONSUMABLES, consumableAtCap, resolveConsumableRequest } from './consumables';
 import type { EnemyState } from './enemy';
 import type { GameInput, GameState } from './game';
 import { activeWeaponSpec, targetCentre, targetHitBoxes } from './game';
@@ -27,6 +28,8 @@ const MIN_USEFUL_LEAN = 0.15;
 const MAX_TURN = 0.18;
 const AIM_TOLERANCE = 0.008;
 const CLEARANCE = 0.08;
+/** Health at or below which the bot stops to heal once no enemy is in sight. */
+const BOT_HEAL_BELOW = 55;
 
 interface Grid {
   readonly width: number;
@@ -263,6 +266,22 @@ export function createBot(map: GameMap): Bot {
       }
     }
 
+    // Patch up between fights: with nobody in sight, start a heal when hurt and hold still for it.
+    if (!bestVisible) {
+      if (state.consumableUse) return idleInput;
+      if (state.playerHealth <= BOT_HEAL_BELOW) {
+        const heal = resolveConsumableRequest(
+          'best-heal',
+          state.consumables,
+          state.playerHealth,
+          state.playerBoost,
+        );
+        if (heal && !consumableAtCap(CONSUMABLES[heal], state.playerHealth, state.playerBoost)) {
+          return { ...idleInput, useConsumable: heal };
+        }
+      }
+    }
+
     // Prefer primary weapon whenever safe (unless playing Gun Game where weapon tier is locked).
     if (
       !modeSpec.usesWeaponLadder &&
@@ -292,7 +311,7 @@ export function createBot(map: GameMap): Bot {
       const dist = length(to);
       const wantedYaw = Math.atan2(-to.x, -to.z);
       const wantedPitch = Math.atan2(to.y, Math.hypot(to.x, to.z));
-      const yawError = angleDelta(player.yaw, wantedYaw);
+      const yawError = angleDelta(player.yaw + weapon.recoilYaw, wantedYaw);
       const pitchError = wantedPitch - (player.pitch + weapon.recoil);
       const tolerance = isBuckshot ? 0.025 : Math.max(AIM_TOLERANCE, 0.11 / Math.max(4, dist));
       const onTarget = Math.abs(yawError) < tolerance && Math.abs(pitchError) < tolerance;
@@ -375,7 +394,11 @@ export function createBot(map: GameMap): Bot {
   return (state) => {
     const modeSpec = getGameModeSpec(state.mode);
     if (modeSpec.usesEnemies) {
-      return stepEnemyCombatBot(state);
+      // Takes whatever lies within reach in passing; it never goes out of its way for loot.
+      const input = stepEnemyCombatBot(state);
+      return state.nearbyLoot !== null && state.nearbyLootRefusal === null
+        ? { ...input, interact: true }
+        : input;
     }
 
     // Target Range mode (`range`): steel silhouette clearing loop.
@@ -425,7 +448,7 @@ export function createBot(map: GameMap): Bot {
       const to = sub(targetCentre(engaged), eye);
       const wantedYaw = Math.atan2(-to.x, -to.z);
       const wantedPitch = Math.atan2(to.y, Math.hypot(to.x, to.z));
-      const yawError = angleDelta(player.yaw, wantedYaw);
+      const yawError = angleDelta(player.yaw + weapon.recoilYaw, wantedYaw);
       const pitchError = wantedPitch - (player.pitch + weapon.recoil);
       const onTarget = Math.abs(yawError) < AIM_TOLERANCE && Math.abs(pitchError) < AIM_TOLERANCE;
       const canTrigger = spec.fireMode === 'auto' ? true : !weapon.triggerHeld;

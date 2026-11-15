@@ -62,8 +62,8 @@ animation and the sounds both read it, so they stay together.
 
 ## Checking it looks held
 
-First run `npm run playtest -- --weapon` and open `playtest/weapon.png`: the gun and
-hands from the left, right, front and above. Fingers lie on the surface, none pass
+First run `npm run playtest -- --weapon=<id>` and open `playtest/weapon-<id>.png`: the
+gun and hands from the left, right, front and above. Add `--optic=<id>` to fit a sight. Fingers lie on the surface, none pass
 through the gun or the other hand, and the trigger finger reaches the trigger.
 
 Then run `npm run playtest` and open these in `playtest/`:

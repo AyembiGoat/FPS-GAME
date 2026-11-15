@@ -89,6 +89,240 @@ function rustle(engine: Engine, at: number, level: number, length: number) {
   });
 }
 
+/** One gun's report, as the settings of the five layers `shot` is built from. */
+interface ShotVoice {
+  /** Muzzle crack: [high-pass frequency, level, decay]. */
+  readonly crack: readonly [number, number, number];
+  /** Pressure body: [from, to, q, level, decay]. */
+  readonly body: readonly [number, number, number, number, number];
+  /** Air tail: [from, to, level, decay]. */
+  readonly tail: readonly [number, number, number, number];
+  /** Chest thump: [from, to, level, decay]. */
+  readonly thump: readonly [number, number, number, number];
+  /** Parts moving after the shot: [delay, pitch, level, length]. */
+  readonly action: readonly (readonly [number, number, number, number])[];
+  /** Echo off the walls: [level, brightness]. */
+  readonly slap: readonly [number, number];
+}
+
+/** The guns added with the survival arsenal. Each differs by calibre, barrel and action. */
+const SHOT_VOICES: Partial<Record<WeaponId, ShotVoice>> = {
+  // 5.56 from a 20-inch barrel: the brightest crack of the rifles, buffer spring twang.
+  m16a4: {
+    crack: [3800, 0.96, 0.018],
+    body: [1950, 520, 1.1, 0.86, 0.09],
+    tail: [8800, 720, 0.8, 0.15],
+    thump: [220, 58, 0.68, 0.09],
+    action: [
+      [0.034, 2700, 0.11, 0.026],
+      [0.06, 3400, 0.05, 0.03],
+    ],
+    slap: [0.82, 1900],
+  },
+  // Bullpup: the action cycles beside the ear.
+  'aug-a3': {
+    crack: [3500, 0.92, 0.018],
+    body: [1750, 470, 1.15, 0.88, 0.095],
+    tail: [8200, 650, 0.82, 0.15],
+    thump: [205, 54, 0.72, 0.095],
+    action: [[0.03, 2500, 0.15, 0.028]],
+    slap: [0.8, 1750],
+  },
+  // .45 ACP, subsonic: a dull heavy knock with a slow bolt.
+  ump45: {
+    crack: [1900, 0.7, 0.022],
+    body: [980, 300, 1.2, 0.9, 0.1],
+    tail: [5200, 420, 0.8, 0.14],
+    thump: [150, 44, 0.8, 0.11],
+    action: [[0.03, 1500, 0.14, 0.035]],
+    slap: [0.7, 1300],
+  },
+  // .45 ACP at 1,100 rounds a minute: short and tight so the shots do not smear.
+  vector: {
+    crack: [2300, 0.76, 0.016],
+    body: [1150, 340, 1.3, 0.86, 0.075],
+    tail: [6000, 480, 0.74, 0.11],
+    thump: [170, 50, 0.7, 0.08],
+    action: [[0.02, 2100, 0.1, 0.02]],
+    slap: [0.68, 1450],
+  },
+  // 12 gauge with a self-loading Kalashnikov action: the boom, then two beats of the carrier.
+  'saiga-12': {
+    crack: [2000, 0.9, 0.03],
+    body: [800, 190, 0.9, 1.05, 0.17],
+    tail: [5600, 300, 1.0, 0.26],
+    thump: [120, 30, 1.0, 0.2],
+    action: [
+      [0.03, 1400, 0.16, 0.04],
+      [0.065, 2000, 0.15, 0.045],
+    ],
+    slap: [1.0, 1250],
+  },
+  // 7.62×39 from a long barrel: the AK's bark with a heavier milled action.
+  sks: {
+    crack: [2550, 0.84, 0.024],
+    body: [1220, 320, 1.2, 0.95, 0.12],
+    tail: [7000, 450, 0.9, 0.19],
+    thump: [160, 40, 0.88, 0.14],
+    action: [
+      [0.028, 1700, 0.14, 0.034],
+      [0.058, 2400, 0.12, 0.036],
+    ],
+    slap: [0.92, 1500],
+  },
+  // 5.56 with a Garand-style operating rod slapping home.
+  'mini-14': {
+    crack: [3650, 0.94, 0.018],
+    body: [1900, 500, 1.1, 0.86, 0.09],
+    tail: [8600, 700, 0.8, 0.15],
+    thump: [215, 56, 0.7, 0.09],
+    action: [
+      [0.03, 2300, 0.13, 0.03],
+      [0.055, 3000, 0.08, 0.03],
+    ],
+    slap: [0.82, 1850],
+  },
+  // 7.92×57 full-power rifle round, then the bolt: lift, pull, push, lock.
+  kar98k: {
+    crack: [3400, 1.0, 0.03],
+    body: [1300, 210, 0.95, 1.04, 0.2],
+    tail: [8600, 280, 1.0, 0.33],
+    thump: [110, 28, 1.0, 0.23],
+    action: [
+      [0.2, 1900, 0.14, 0.04],
+      [0.3, 1500, 0.16, 0.05],
+      [0.5, 1700, 0.16, 0.05],
+      [0.68, 2300, 0.15, 0.04],
+    ],
+    slap: [1.05, 1500],
+  },
+  // 7.62×54R from a 73 cm barrel: a touch deeper and longer, with a stiffer bolt.
+  'mosin-nagant': {
+    crack: [3300, 1.0, 0.032],
+    body: [1250, 200, 0.95, 1.05, 0.21],
+    tail: [8400, 270, 1.0, 0.35],
+    thump: [104, 26, 1.02, 0.24],
+    action: [
+      [0.2, 1700, 0.15, 0.045],
+      [0.3, 1350, 0.17, 0.055],
+      [0.5, 1550, 0.17, 0.055],
+      [0.68, 2100, 0.16, 0.04],
+    ],
+    slap: [1.05, 1450],
+  },
+  // 7.62×54R machine gun firing from an open bolt: a heavy thud before and after each round.
+  'dp-28': {
+    crack: [2900, 0.9, 0.026],
+    body: [1200, 260, 1.0, 1.0, 0.14],
+    tail: [7600, 380, 0.96, 0.22],
+    thump: [135, 34, 0.95, 0.16],
+    action: [
+      [0.03, 1300, 0.16, 0.04],
+      [0.07, 1800, 0.1, 0.04],
+    ],
+    slap: [0.98, 1400],
+  },
+  // 9×19 pistol: lighter and sharper than the .45.
+  'beretta-92fs': {
+    crack: [2700, 0.78, 0.016],
+    body: [1500, 420, 1.2, 0.8, 0.07],
+    tail: [7000, 560, 0.68, 0.1],
+    thump: [200, 60, 0.58, 0.07],
+    action: [[0.026, 2600, 0.12, 0.024]],
+    slap: [0.64, 1700],
+  },
+};
+
+function voicedShot(engine: Engine, voice: ShotVoice, now: number) {
+  const [crackFrom, crackLevel, crackDecay] = voice.crack;
+  engine.noise('weapon', now, {
+    filter: 'highpass',
+    from: engine.vary(crackFrom, 0.06),
+    level: crackLevel,
+    attack: 0.0006,
+    decay: crackDecay,
+  });
+  const [bodyFrom, bodyTo, bodyQ, bodyLevel, bodyDecay] = voice.body;
+  engine.noise('weapon', now, {
+    filter: 'bandpass',
+    from: engine.vary(bodyFrom, 0.07),
+    to: bodyTo,
+    q: bodyQ,
+    level: bodyLevel,
+    decay: bodyDecay,
+  });
+  const [tailFrom, tailTo, tailLevel, tailDecay] = voice.tail;
+  engine.noise('weapon', now, {
+    filter: 'lowpass',
+    from: engine.vary(tailFrom, 0.07),
+    to: tailTo,
+    level: tailLevel,
+    decay: tailDecay,
+  });
+  const [thumpFrom, thumpTo, thumpLevel, thumpDecay] = voice.thump;
+  engine.tone('weapon', now, {
+    type: 'triangle',
+    from: engine.vary(thumpFrom, 0.06),
+    to: thumpTo,
+    level: thumpLevel,
+    decay: thumpDecay,
+  });
+  for (const [delay, pitch, level, length] of voice.action) {
+    // Anything later than a tenth of a second is the shooter working the gun by hand.
+    clack(engine, delay > 0.1 ? 'handling' : 'weapon', now + delay, { pitch, level, length });
+  }
+  wallSlap(engine, now, voice.slap[0], voice.slap[1]);
+}
+
+/**
+ * A shot through a suppressor: the muzzle blast is gone, leaving a short low cough, the
+ * action, and (for rifle rounds) a faint crack from the bullet itself. About a third as
+ * loud as the same gun unsuppressed.
+ */
+export function suppressedShot(engine: Engine, weaponId: WeaponId = 'm1911') {
+  const now = engine.now();
+  const voice = SHOT_VOICES[weaponId];
+  const supersonic = voice ? voice.crack[0] >= 2500 : weaponId !== 'm1911' && weaponId !== 'mp5';
+  engine.noise('weapon', now, {
+    filter: 'bandpass',
+    from: engine.vary(980, 0.08),
+    to: 300,
+    q: 0.8,
+    level: 0.34,
+    attack: 0.002,
+    decay: 0.06,
+  });
+  engine.noise('weapon', now, {
+    filter: 'lowpass',
+    from: engine.vary(2600, 0.08),
+    to: 320,
+    level: 0.3,
+    attack: 0.002,
+    decay: 0.1,
+  });
+  engine.tone('weapon', now, {
+    type: 'triangle',
+    from: engine.vary(132, 0.06),
+    to: 52,
+    level: 0.24,
+    decay: 0.07,
+  });
+  if (supersonic) {
+    engine.noise('weapon', now, {
+      filter: 'highpass',
+      from: engine.vary(4200, 0.06),
+      level: 0.16,
+      attack: 0.0006,
+      decay: 0.012,
+    });
+  }
+  const actions = voice?.action ?? [[0.036, 2400, 0.11, 0.03] as const];
+  for (const [delay, pitch, level, length] of actions) {
+    clack(engine, delay > 0.1 ? 'handling' : 'weapon', now + delay, { pitch, level, length });
+  }
+  wallSlap(engine, now, 0.12, 1100);
+}
+
 /**
  * 5-layer gunshot synthesizer tailored to every firearm's caliber, barrel length,
  * muzzle device, and bolt/piston/pump mechanics:
@@ -100,6 +334,11 @@ function rustle(engine: Engine, at: number, level: number, length: number) {
  */
 export function shot(engine: Engine, weaponId: WeaponId = 'm1911') {
   const now = engine.now();
+  const voice = SHOT_VOICES[weaponId];
+  if (voice) {
+    voicedShot(engine, voice, now);
+    return;
+  }
 
   switch (weaponId) {
     case 'hk416': {
@@ -428,9 +667,9 @@ export function shot(engine: Engine, weaponId: WeaponId = 'm1911') {
 
 /** Caliber-appropriate spent casing / shotgun hull bouncing on concrete. */
 export function casing(engine: Engine, weaponId: WeaponId = 'm1911') {
-  if (weaponId === 'remington-870') {
-    // Hollow plastic & brass 12-gauge hull clattering on concrete after pump cycle!
-    const at = engine.now() + engine.vary(0.76, 0.1);
+  if (weaponId === 'remington-870' || weaponId === 'saiga-12') {
+    // Hollow plastic & brass 12-gauge hull clattering on concrete (later for the pump gun).
+    const at = engine.now() + engine.vary(weaponId === 'saiga-12' ? 0.5 : 0.76, 0.1);
     for (const [delay, level] of [
       [0, 0.055],
       [0.11, 0.035],
@@ -454,11 +693,15 @@ export function casing(engine: Engine, weaponId: WeaponId = 'm1911') {
     return;
   }
 
-  const baseDelay = weaponId === 'awm' ? 0.88 : 0.5;
+  const boltAction = weaponId === 'awm' || weaponId === 'kar98k' || weaponId === 'mosin-nagant';
+  const baseDelay = boltAction ? 0.88 : 0.5;
   const basePitch =
-    weaponId === 'awm'
+    boltAction || weaponId === 'dp-28'
       ? 3150
-      : weaponId === 'scar-h' || weaponId === 'ak47' || weaponId === 'desert-eagle'
+      : weaponId === 'scar-h' ||
+          weaponId === 'ak47' ||
+          weaponId === 'desert-eagle' ||
+          weaponId === 'sks'
         ? 3650
         : 4350;
 
@@ -638,11 +881,80 @@ export function reload(
     return;
   }
 
+  if (
+    weaponId === 'kar98k' ||
+    weaponId === 'mosin-nagant' ||
+    (weaponId === 'sks' && beats.magazineIn > beats.magazineOut)
+  ) {
+    // Stripper clip: the bolt is drawn back, the clip is set in its guide, the rounds are
+    // thumbed down into the magazine in one push, and closing the bolt throws the clip clear.
+    const boltGun = weaponId !== 'sks';
+    clack(engine, 'handling', now + 0.1, {
+      pitch: boltGun ? 1500 : 1750,
+      level: 0.1,
+      length: 0.04,
+    });
+    clack(engine, 'handling', now + 0.2, {
+      pitch: boltGun ? 1180 : 1420,
+      level: 0.12,
+      length: 0.05,
+    });
+    clack(engine, 'handling', out, { pitch: 3350, level: 0.07, length: 0.02 });
+    const rounds = boltGun ? 5 : 6;
+    const span = Math.max(0.2, seat - out - 0.08);
+    for (let i = 0; i < rounds; i++) {
+      const t = out + 0.08 + (span * i) / rounds;
+      clack(engine, 'handling', t, { pitch: 2150 - i * 70, level: 0.06, length: 0.02 });
+      engine.noise('handling', t + 0.012, {
+        filter: 'bandpass',
+        from: 1500,
+        q: 1.1,
+        level: 0.04,
+        decay: 0.03,
+      });
+    }
+    engine.noise('handling', seat, { filter: 'lowpass', from: 300, level: 0.11, decay: 0.04 });
+    clack(engine, 'handling', release - 0.03, { pitch: 3900, level: 0.06, length: 0.03 });
+    clack(engine, 'handling', release, { pitch: boltGun ? 1320 : 1650, level: 0.13, length: 0.05 });
+    if (boltGun) {
+      clack(engine, 'handling', release + 0.09, { pitch: 1900, level: 0.1, length: 0.035 });
+    }
+    rustle(engine, release + 0.06, 0.042, 0.2);
+    return;
+  }
+
+  if (weaponId === 'dp-28') {
+    // Pan magazine: latch thumbed back, the empty pan lifted off the receiver, a full pan set
+    // down on the post and pressed until the latch snaps, then the charging handle is drawn.
+    clack(engine, 'handling', out - 0.05, { pitch: 2400, level: 0.08, length: 0.025 });
+    engine.noise('handling', out, {
+      filter: 'bandpass',
+      from: 900,
+      to: 1500,
+      q: 0.9,
+      level: 0.07,
+      attack: 0.02,
+      decay: 0.14,
+    });
+    clack(engine, 'handling', out + 0.03, { pitch: 760, level: 0.09, length: 0.09 });
+    rustle(engine, out + 0.3, 0.05, 0.36);
+    clack(engine, 'handling', seat - 0.06, { pitch: 820, level: 0.1, length: 0.1 });
+    engine.noise('handling', seat, { filter: 'lowpass', from: 260, level: 0.17, decay: 0.05 });
+    clack(engine, 'handling', seat + 0.02, { pitch: 1900, level: 0.12, length: 0.04 });
+    clack(engine, 'handling', release, { pitch: 1250, level: 0.12, length: 0.05 });
+    clack(engine, 'handling', release + 0.12, { pitch: 1480, level: 0.14, length: 0.055 });
+    rustle(engine, release + 0.16, 0.045, 0.22);
+    return;
+  }
+
   const heavySteel =
     weaponId === 'ak47' ||
     weaponId === 'scar-h' ||
     weaponId === 'awm' ||
-    weaponId === 'desert-eagle';
+    weaponId === 'desert-eagle' ||
+    weaponId === 'saiga-12' ||
+    weaponId === 'mini-14' ||
+    weaponId === 'sks';
   const magPitch = heavySteel ? 1320 : 1620;
 
   // Magazine release latch + mag sliding free of the magwell.
@@ -826,7 +1138,15 @@ export function enemyShot(
   const crackAt = engine.now() + Math.min(0.06, distance / 820);
   const reportAt = engine.now() + distance / SPEED_OF_SOUND;
   const atten = falloff(Math.max(3, distance));
-  const heavy = weaponId === 'scar-h' || weaponId === 'ak47' || weaponId === 'remington-870';
+  const heavy =
+    weaponId === 'scar-h' ||
+    weaponId === 'ak47' ||
+    weaponId === 'remington-870' ||
+    weaponId === 'saiga-12' ||
+    weaponId === 'sks' ||
+    weaponId === 'kar98k' ||
+    weaponId === 'mosin-nagant' ||
+    weaponId === 'dp-28';
 
   // Supersonic passing snap/crack
   engine.noise('world', crackAt, {
@@ -994,4 +1314,81 @@ export function tierAdvance(engine: Engine) {
     level: 0.115,
     decay: 0.16,
   });
+}
+
+/** Starting to use a healing or boost item: kit rustle, then a wrapper tear or a can tab. */
+export function consumableStart(engine: Engine, kind: 'heal' | 'boost') {
+  const now = engine.now();
+  rustle(engine, now, 0.1, 0.22);
+  if (kind === 'heal') {
+    engine.noise('handling', now + 0.2, {
+      filter: 'highpass',
+      from: 2600,
+      level: 0.07,
+      attack: 0.02,
+      decay: 0.16,
+    });
+  } else {
+    clack(engine, 'handling', now + 0.2, { pitch: 3100, level: 0.09, length: 0.03 });
+    engine.noise('handling', now + 0.23, {
+      filter: 'highpass',
+      from: 5200,
+      level: 0.05,
+      attack: 0.004,
+      decay: 0.12,
+    });
+  }
+}
+
+/** The item took effect: two soft rising notes, warmer for healing. */
+export function consumableComplete(engine: Engine, kind: 'heal' | 'boost') {
+  const now = engine.now();
+  const base = kind === 'heal' ? 523 : 659;
+  engine.tone('ui', now, { from: base, level: 0.09, attack: 0.008, decay: 0.16 });
+  engine.tone('ui', now + 0.09, { from: base * 1.5, level: 0.08, attack: 0.008, decay: 0.22 });
+}
+
+/** The item was interrupted: a short dull drop. */
+export function consumableCancel(engine: Engine) {
+  const now = engine.now();
+  rustle(engine, now, 0.07, 0.12);
+  engine.tone('ui', now, { from: 300, to: 190, level: 0.07, decay: 0.1 });
+}
+
+/** Picking something up off a surface: a hand closing on it, then it going into the kit. */
+export function lootPickup(engine: Engine, kind: 'item' | 'armour') {
+  const now = engine.now();
+  if (kind === 'item') {
+    rustle(engine, now, 0.14, 0.1);
+    clack(engine, 'handling', now + 0.07, { pitch: 1500, level: 0.12, length: 0.03 });
+    rustle(engine, now + 0.12, 0.11, 0.14);
+  } else {
+    // Heavier: webbing dragged on, then a buckle snapping shut.
+    rustle(engine, now, 0.12, 0.26);
+    rustle(engine, now + 0.2, 0.09, 0.18);
+    clack(engine, 'handling', now + 0.34, { pitch: 2300, level: 0.1, length: 0.028 });
+  }
+}
+
+/** A vest or helmet giving out: a ceramic crack with a dull thud under it. */
+export function armourBreak(engine: Engine, pan = 0) {
+  const now = engine.now();
+  engine.noise('world', now, {
+    filter: 'highpass',
+    from: 3200,
+    level: 0.3,
+    attack: 0.0008,
+    decay: 0.04,
+    pan,
+  });
+  engine.noise('world', now + 0.012, {
+    filter: 'bandpass',
+    from: 1700,
+    to: 600,
+    q: 2.2,
+    level: 0.26,
+    decay: 0.11,
+    pan,
+  });
+  engine.tone('world', now, { type: 'triangle', from: 190, to: 70, level: 0.24, decay: 0.1, pan });
 }

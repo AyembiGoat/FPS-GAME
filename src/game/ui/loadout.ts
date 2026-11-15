@@ -1,3 +1,5 @@
+import type { AttachmentId, AttachmentSlot, WeaponAttachments } from '../../core/attachments';
+import { NO_ATTACHMENTS, sanitizeAttachments } from '../../core/attachments';
 import type { Loadout, OpticId, WeaponId } from '../../core/weapon';
 import {
   clampWeaponOptic,
@@ -29,7 +31,28 @@ export function sanitizeLoadout(raw: unknown): Loadout {
       }
     }
   }
-  return { primary, secondary, optics };
+
+  // Saved parts are checked against the gun again: a part that no longer fits is dropped.
+  const attachments: Partial<Record<WeaponId, WeaponAttachments>> = {};
+  if (typeof record.attachments === 'object' && record.attachments !== null) {
+    for (const [k, v] of Object.entries(record.attachments as Record<string, unknown>)) {
+      if (!isWeaponId(k)) continue;
+      const fitted = sanitizeAttachments(getWeaponSpec(k), v);
+      if (Object.keys(fitted).length > 0) attachments[k] = fitted;
+    }
+  }
+  return { primary, secondary, optics, attachments };
+}
+
+function attachmentsEqual(a: Loadout['attachments'], b: Loadout['attachments']): boolean {
+  return JSON.stringify(sortedAttachments(a)) === JSON.stringify(sortedAttachments(b));
+}
+
+function sortedAttachments(value: Loadout['attachments']) {
+  return Object.entries(value ?? {})
+    .map(([weaponId, parts]) => [weaponId, Object.entries(parts).sort()] as const)
+    .filter(([, parts]) => parts.length > 0)
+    .sort(([left], [right]) => left.localeCompare(right));
 }
 
 function opticsEqual(
@@ -78,6 +101,27 @@ export function createLoadoutStore() {
       return clampWeaponOptic(weaponId, current.optics?.[weaponId]);
     },
 
+    attachmentsFor(weaponId: WeaponId): WeaponAttachments {
+      return current.attachments?.[weaponId] ?? NO_ATTACHMENTS;
+    },
+
+    /** Fit `attachmentId` in `slot` of `weaponId`, or empty the slot with `null`. */
+    setAttachment(weaponId: WeaponId, slot: AttachmentSlot, attachmentId: AttachmentId | null) {
+      const before = current.attachments?.[weaponId] ?? NO_ATTACHMENTS;
+      const wanted: Partial<Record<AttachmentSlot, AttachmentId | null>> = {
+        ...before,
+        [slot]: attachmentId,
+      };
+      const fitted = sanitizeAttachments(getWeaponSpec(weaponId), wanted);
+      if (before[slot] === fitted[slot]) return;
+      current = {
+        ...current,
+        attachments: { ...(current.attachments ?? {}), [weaponId]: fitted },
+      };
+      persist();
+      notify();
+    },
+
     equip(weaponId: WeaponId) {
       const spec = getWeaponSpec(weaponId);
       const next: Loadout =
@@ -106,7 +150,8 @@ export function createLoadoutStore() {
       if (
         clean.primary === current.primary &&
         clean.secondary === current.secondary &&
-        opticsEqual(clean.optics, current.optics)
+        opticsEqual(clean.optics, current.optics) &&
+        attachmentsEqual(clean.attachments, current.attachments)
       ) {
         return;
       }

@@ -35,6 +35,15 @@ Measure before and after; do not optimise on a guess. `renderer.info.render` giv
 calls and triangles per frame. The browser performance panel gives frame time and
 garbage collection pauses. Report the numbers and the scene they were taken in.
 
+A frame here is two passes: the world, then the gun in hand. `renderer.info` resets on
+every pass unless told not to, so the game resets it once per frame by hand; read it
+through `__fps.renderStats()`, which `npm run playtest` prints. Frames that redraw
+shadows cost about twice as many calls.
+
+Measured at spawn, 1280×720: Practice about 105 calls; Gun Game about 245, of which the
+ten hostiles are about 130 (each is some thirteen separate meshes, not instanced). That
+is the first place to look if draw calls need to come down.
+
 ## Looks
 
 - Decide on tone mapping and colour space once, globally, and author assets to it.

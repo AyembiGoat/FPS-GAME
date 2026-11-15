@@ -7,10 +7,12 @@
 
 import type { Box } from './collision';
 import { moveBody, raycast } from './collision';
+import type { ArmourState, HitZone } from './damage';
+import { createArmour } from './damage';
 import type { EnemyArchetype, EnemySpawn, GameMap } from './map';
 import type { DifficultyTuning } from './modes';
 import { findCoverPosition, findPath, hasLineOfSight } from './nav';
-import { PLAYER_TUNING } from './player';
+import { playerHitZone, PLAYER_TUNING } from './player';
 import type { SeededRng } from './rng';
 import type { Vec3 } from './vec';
 import { add, angleDelta, clamp, scale, vec3 } from './vec';
@@ -18,7 +20,7 @@ import type { WeaponId } from './weapon';
 import { getWeaponSpec, weaponProjectileDamage } from './weapon';
 
 export type EnemyAiState = 'patrol' | 'alert' | 'engage' | 'cover' | 'investigate' | 'dead';
-export type HitZone = 'head' | 'torso' | 'legs';
+export type { HitZone } from './damage';
 
 export const ENEMY_BODY = {
   radius: 0.34,
@@ -44,6 +46,10 @@ export interface EnemyState {
   readonly pitch: number;
   readonly health: number;
   readonly maxHealth: number;
+  /** Vest and helmet worn; both empty unless the spawn asks for them. */
+  readonly armour: ArmourState;
+  /** Seconds left in which the player may see this combatant's health after hurting it. */
+  readonly revealRemaining: number;
   readonly alive: boolean;
   readonly crouched: boolean;
   readonly aiState: EnemyAiState;
@@ -189,6 +195,8 @@ export function createEnemy(spawn: EnemySpawn): EnemyState {
     pitch: 0,
     health: ENEMY_BODY.maxHealth,
     maxHealth: ENEMY_BODY.maxHealth,
+    armour: createArmour(spawn.vest ?? 0, spawn.helmet ?? 0),
+    revealRemaining: 0,
     alive: true,
     crouched: false,
     aiState: 'patrol',
@@ -270,16 +278,21 @@ export function damageEnemy(
   };
 }
 
-/** Alert unengaged enemies within `gunshotAlertRange` when the player fires unsuppressed shots. */
+/**
+ * Alert unengaged enemies that hear a player shot. `noiseRadiusScale` shrinks the hearing
+ * distance for quieter weapons (a suppressor halves it).
+ */
 export function alertEnemiesByGunshot(
   enemies: readonly EnemyState[],
   shotOrigin: Vec3,
   tuning: DifficultyTuning,
+  noiseRadiusScale: number = 1,
 ): EnemyState[] {
+  const hearingRange = tuning.gunshotAlertRange * noiseRadiusScale;
   return enemies.map((e) => {
     if (!e.alive) return e;
     const dist = Math.hypot(shotOrigin.x - e.position.x, shotOrigin.z - e.position.z);
-    if (dist > tuning.gunshotAlertRange) return e;
+    if (dist > hearingRange) return e;
     if (e.aiState === 'engage' || e.aiState === 'cover') {
       return {
         ...e,
@@ -304,7 +317,12 @@ export interface EnemyShotResult {
   readonly direction: Vec3;
   readonly endPoint: Vec3;
   readonly hitPlayer: boolean;
+  /** Damage arriving at the player before their armour takes its share. */
   readonly damageToPlayer: number;
+  /** Part of the player's body the round struck (`'torso'` when it missed). */
+  readonly zone: HitZone;
+  /** Share of the player's armour protection this round ignores. */
+  readonly armourPiercing: number;
   readonly surfaceHitNormal: Vec3 | null;
 }
 
@@ -400,7 +418,7 @@ function archetypePreferredRange(archetype: EnemyArchetype): {
   }
 }
 
-/** Check if ray `(origin, dir)` hits the player cylinder/box within `maxDist`. */
+/** Distance at which ray `(origin, dir)` hits the player's body box within `maxDist`, if it does. */
 function rayHitsPlayer(origin: Vec3, dir: Vec3, maxDist: number, playerFeet: Vec3): number | null {
   const r = PLAYER_TUNING.radius + 0.04;
   const playerBox: Box = {
@@ -430,6 +448,7 @@ export function stepEnemies(
       nextEnemies.push({
         ...enemy,
         hitReact: Math.max(0, enemy.hitReact - dt * 5),
+        revealRemaining: Math.max(0, enemy.revealRemaining - dt),
         muzzleFlash: 0,
         deathProgress: Math.min(1, enemy.deathProgress + dt * 3.6),
       });
@@ -789,7 +808,9 @@ export function stepEnemies(
           const playerHitDist = rayHitsPlayer(muzzle, dir, wallDist, playerFeet);
 
           if (playerHitDist !== null) {
-            const rawDmg = weaponProjectileDamage(spec, playerHitDist, 'torso');
+            const hitHeight = muzzle.y + dir.y * playerHitDist - playerFeet.y;
+            const zone = playerHitZone(hitHeight);
+            const rawDmg = weaponProjectileDamage(spec, playerHitDist, zone);
             const scaledDmg = Math.max(1, Math.round(rawDmg * tuning.enemyDamageScale));
             shots.push({
               enemyId: enemy.id,
@@ -799,6 +820,8 @@ export function stepEnemies(
               endPoint: add(muzzle, scale(dir, playerHitDist)),
               hitPlayer: true,
               damageToPlayer: scaledDmg,
+              zone,
+              armourPiercing: spec.armourPiercing,
               surfaceHitNormal: null,
             });
           } else {
@@ -810,6 +833,8 @@ export function stepEnemies(
               endPoint: add(muzzle, scale(dir, wallDist)),
               hitPlayer: false,
               damageToPlayer: 0,
+              zone: 'torso',
+              armourPiercing: spec.armourPiercing,
               surfaceHitNormal: wallHit ? wallHit.normal : null,
             });
           }
@@ -846,6 +871,7 @@ export function stepEnemies(
       progressAnchor,
       stuckTimer,
       hitReact,
+      revealRemaining: Math.max(0, enemy.revealRemaining - dt),
       muzzleFlash,
       walkPhase,
     });

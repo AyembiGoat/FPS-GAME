@@ -66,6 +66,11 @@ export interface GameModeSpec {
   readonly usesWeaponLadder: boolean;
   readonly enemyLimit: number;
   readonly playerMaxHealth: number;
+  /**
+   * Whether the map's loot lies in the level. Nobody starts a run with armour or items in any
+   * mode: they are only ever picked up.
+   */
+  readonly usesLoot: boolean;
   readonly autoResetOnClear: boolean;
   readonly tuning: DifficultyTuning;
 }
@@ -102,6 +107,7 @@ export const GAME_MODES: Readonly<Record<GameModeId, GameModeSpec>> = {
     usesWeaponLadder: true,
     enemyLimit: 10,
     playerMaxHealth: 100,
+    usesLoot: true,
     autoResetOnClear: false,
     tuning: STANDARD_COMBAT_TUNING,
   },
@@ -118,6 +124,7 @@ export const GAME_MODES: Readonly<Record<GameModeId, GameModeSpec>> = {
     usesWeaponLadder: false,
     enemyLimit: 0,
     playerMaxHealth: 100,
+    usesLoot: false,
     autoResetOnClear: true,
     tuning: STANDARD_COMBAT_TUNING,
   },

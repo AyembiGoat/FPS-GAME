@@ -18,12 +18,12 @@ All sound is synthesised in `src/game/audio/`. There are no audio files.
 Each sound goes to a bus. The bus sets how loud that kind of sound is and how much
 echo it gets:
 
-| Bus        | For                                                                |
-| ---------- | ------------------------------------------------------------------ |
-| `weapon`   | The gunshot                                                        |
-| `handling` | Reload, dry fire, cloth, spent cases. Quiet: heard at arm's length |
-| `world`    | Bullet impacts, steel, footsteps, landing                          |
-| `ambience` | Wind                                                               |
+| Bus        | For                                                                                  |
+| ---------- | ------------------------------------------------------------------------------------ |
+| `weapon`   | The gunshot                                                                          |
+| `handling` | Reload, dry fire, cloth, spent cases, picking up items. Quiet: heard at arm's length |
+| `world`    | Bullet impacts, steel, footsteps, landing                                            |
+| `ambience` | Wind                                                                                 |
 
 To make a whole kind of sound louder or quieter, change the bus level in `engine.ts`.
 Inside `sounds.ts`, levels only set the balance between the parts of one sound.

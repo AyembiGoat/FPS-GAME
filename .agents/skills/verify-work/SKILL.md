@@ -57,7 +57,8 @@ the game looks right. For that, play it:
 ```
 npm run playtest            # every feature (reload, aim, lean, loudness), then the bot clears the map
 npm run playtest -- --materials    # every texture side by side
-npm run playtest -- --weapon       # the gun and hands from four sides
+npm run playtest -- --weapon=sks,kar98k    # those guns and the hands from four sides (--weapon=all for every gun)
+npm run playtest -- --weapon=awm --optic=pso-1    # the same with a sight fitted
 npm run playtest -- --keep before  # also copy the screenshots to playtest/before/ to compare later
 npm run playtest -- --quick # one screenshot of the spawn
 ```

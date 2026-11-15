@@ -44,10 +44,26 @@ export function createAudio() {
       uiCuesEnabled = enabled;
     },
 
-    shot(weaponId: WeaponId = 'm1911') {
+    shot(weaponId: WeaponId = 'm1911', suppressed = false) {
       if (!engine) return;
-      sounds.shot(engine, weaponId);
+      if (suppressed) sounds.suppressedShot(engine, weaponId);
+      else sounds.shot(engine, weaponId);
       sounds.casing(engine, weaponId);
+    },
+    consumableStart(kind: 'heal' | 'boost') {
+      if (engine) sounds.consumableStart(engine, kind);
+    },
+    consumableComplete(kind: 'heal' | 'boost') {
+      if (engine) sounds.consumableComplete(engine, kind);
+    },
+    consumableCancel() {
+      if (engine) sounds.consumableCancel(engine);
+    },
+    armourBreak(pan = 0) {
+      if (engine) sounds.armourBreak(engine, pan);
+    },
+    lootPickup(kind: 'item' | 'armour') {
+      if (engine) sounds.lootPickup(engine, kind);
     },
     zoomClick() {
       if (engine) sounds.zoomClick(engine);
@@ -145,6 +161,61 @@ const MEASURED: Record<string, (engine: Engine) => void> = {
   },
   shotDeagle: (engine) => {
     sounds.shot(engine, 'desert-eagle');
+  },
+  shotM16a4: (engine) => {
+    sounds.shot(engine, 'm16a4');
+  },
+  shotAugA3: (engine) => {
+    sounds.shot(engine, 'aug-a3');
+  },
+  shotUmp45: (engine) => {
+    sounds.shot(engine, 'ump45');
+  },
+  shotVector: (engine) => {
+    sounds.shot(engine, 'vector');
+  },
+  shotSaiga12: (engine) => {
+    sounds.shot(engine, 'saiga-12');
+  },
+  shotSks: (engine) => {
+    sounds.shot(engine, 'sks');
+  },
+  shotMini14: (engine) => {
+    sounds.shot(engine, 'mini-14');
+  },
+  shotKar98k: (engine) => {
+    sounds.shot(engine, 'kar98k');
+  },
+  shotMosin: (engine) => {
+    sounds.shot(engine, 'mosin-nagant');
+  },
+  shotDp28: (engine) => {
+    sounds.shot(engine, 'dp-28');
+  },
+  shotBeretta: (engine) => {
+    sounds.shot(engine, 'beretta-92fs');
+  },
+  shotSuppressedHk416: (engine) => {
+    sounds.suppressedShot(engine, 'hk416');
+  },
+  shotSuppressedM1911: (engine) => {
+    sounds.suppressedShot(engine, 'm1911');
+  },
+  consumableStart: (engine) => {
+    sounds.consumableStart(engine, 'heal');
+  },
+  consumableComplete: (engine) => {
+    sounds.consumableComplete(engine, 'heal');
+  },
+  consumableCancel: sounds.consumableCancel,
+  armourBreak: (engine) => {
+    sounds.armourBreak(engine, 0);
+  },
+  lootPickupItem: (engine) => {
+    sounds.lootPickup(engine, 'item');
+  },
+  lootPickupArmour: (engine) => {
+    sounds.lootPickup(engine, 'armour');
   },
   weaponSwitch: sounds.weaponSwitch,
   reload: (engine) => {

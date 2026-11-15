@@ -26,7 +26,10 @@ export interface WeaponModel {
   /** Where the support hand holds the magazine while changing it. Parented to the magazine. */
   readonly magazineHand: THREE.Object3D;
   readonly magazine: THREE.Object3D;
-  /** How far the magazine slides down to clear the grip, in metres. */
+  /**
+   * How far the magazine slides down to clear the gun, in metres. Negative lifts it
+   * instead: a pan magazine coming off the top, or a stripper clip held over the action.
+   */
   readonly magazineTravel: number;
   /** Reciprocating bolt/slide, pump forend, or sniper bolt handle, if the gun has one. */
   readonly slide?: THREE.Object3D;

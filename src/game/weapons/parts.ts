@@ -6,7 +6,7 @@ import type { SurfaceName } from '../materials';
 import type { WeaponModel } from './model';
 
 /**
- * Shared procedural firearm building blocks used across the 8 weapon models.
+ * Shared procedural firearm building blocks used across the weapon models.
  * Gun space: metres, +X right, +Y up, -Z forward toward the muzzle.
  */
 
@@ -221,6 +221,84 @@ export function buildCurvedMagazine(
   plate.rotation.x = angle;
   mag.add(plate);
   return mag;
+}
+
+export interface SportingStockOptions {
+  /** Front tip of the forend (negative z). */
+  readonly forendTip: number;
+  /** Underside of the forend at its tip. */
+  readonly forendDepth: number;
+  /** Rear face of the butt. */
+  readonly buttZ: number;
+  /** Semi-pistol wrist with a pommel, or a straight wrist running into the toe. */
+  readonly wrist: 'pistol' | 'straight';
+  /** How far the heel sits below the receiver line. */
+  readonly heelDrop?: number;
+}
+
+/**
+ * Side profile, in (z, y), of a one-piece wooden rifle stock: forend, action bed, wrist
+ * and butt. The receiver sits in it between z = -0.1 and z = 0.1 and the trigger guard
+ * hangs under z = 0.004..0.062, so every gun built on it shares the same hand positions
+ * (see `sportingGripAnchor`).
+ */
+export function sportingStockShape(o: SportingStockOptions): THREE.Shape {
+  const heel = -(o.heelDrop ?? 0.01);
+  // The wood comes a little way up the sides of the action and barrel.
+  const bed = 0.012;
+  const s = new THREE.Shape();
+  s.moveTo(o.forendTip, bed);
+  s.lineTo(0.1, bed);
+  if (o.wrist === 'pistol') {
+    s.lineTo(0.106, 0.014);
+    s.lineTo(0.148, 0.008); // wrist crest
+    s.lineTo(0.19, 0.01); // comb nose
+    s.lineTo(o.buttZ - 0.006, heel);
+    s.lineTo(o.buttZ, -0.125);
+    s.lineTo(o.buttZ - 0.05, -0.128); // toe
+    s.lineTo(0.162, -0.072);
+    s.lineTo(0.118, -0.088); // pommel
+    s.lineTo(0.084, -0.074);
+    s.lineTo(0.074, -0.032);
+  } else {
+    s.lineTo(0.106, 0.012);
+    s.lineTo(0.165, 0.004);
+    s.lineTo(o.buttZ - 0.006, heel);
+    s.lineTo(o.buttZ, -0.125);
+    s.lineTo(o.buttZ - 0.05, -0.128); // toe
+    s.lineTo(0.15, -0.046);
+    s.lineTo(0.074, -0.032);
+  }
+  s.lineTo(-0.16, -0.032);
+  s.lineTo(o.forendTip, o.forendDepth);
+  s.closePath();
+  return s;
+}
+
+/** Steel trigger guard bow and trigger that go with `sportingStockShape`. */
+export function addSportingTriggerGuard(root: THREE.Object3D): void {
+  root.add(partBox('steel-dark', [0.014, 0.003, 0.062], [0, -0.056, 0.033]));
+  root.add(partBox('steel-dark', [0.014, 0.03, 0.004], [0, -0.042, 0.003]));
+  root.add(partBox('steel-dark', [0.014, 0.03, 0.004], [0, -0.042, 0.063]));
+  root.add(partBox('gun-steel', [0.005, 0.02, 0.005], [0, -0.04, 0.038], [0.22, 0, 0]));
+}
+
+/** Firing-hand and trigger anchors that go with `sportingStockShape`. */
+export function sportingGripAnchors(
+  root: THREE.Object3D,
+  wrist: 'pistol' | 'straight',
+): { grip: THREE.Object3D; trigger: THREE.Object3D } {
+  const grip =
+    wrist === 'pistol'
+      ? anchor(root, [0, -0.042, 0.115], [-0.58, 0, 0])
+      : // Low on the wrist: a hand riding high here blocks the open sights when aimed.
+        anchor(root, [0, -0.047, 0.12], [-0.7, 0, 0]);
+  return { grip, trigger: anchor(root, [0.012, -0.04, 0.038]) };
+}
+
+/** Brass used for loose cartridges and stripper clips shown during a reload. */
+export function brassMaterial(): THREE.MeshStandardMaterial {
+  return new THREE.MeshStandardMaterial({ color: 0xc29c45, roughness: 0.32, metalness: 0.85 });
 }
 
 /** Crisp glowing EOTech EXPS3-0 holographic sight reticle canvas texture (65 MOA ring + 1 MOA dot). */
@@ -688,6 +766,139 @@ export function buildLpvoScope(parent: THREE.Object3D, railTopY: number, zCenter
   return railTopY + centerY;
 }
 
+/**
+ * PSO-1 4×24 Soviet rifle scope (ref: reference/arsenal/br/pso-1-4x24-scope-side-view-1.jpg).
+ * Slim 30 mm tube with the long rubber eyecup, the large elevation drum on top, the windage
+ * drum on the right, the reticle-lamp housing underneath and the sliding sunshade in front.
+ * Sits on a short cradle so it fits any top rail. Returns the optical centreline height.
+ */
+export function buildPsoScope(parent: THREE.Object3D, railTopY: number, zCenter: number): number {
+  const g = new THREE.Group();
+  g.position.set(0, railTopY, zCenter);
+  parent.add(g);
+
+  const centerY = 0.038;
+  // Cast cradle: rail clamp, two webs up to the tube, locking lever on the left.
+  g.add(partBox('steel-dark', [0.026, 0.01, 0.105], [0, 0.005, 0.0]));
+  for (const rz of [-0.034, 0.034]) {
+    g.add(partBox('steel-dark', [0.014, 0.018, 0.016], [0, 0.017, rz]));
+  }
+  g.add(partBox('gun-steel', [0.006, 0.008, 0.034], [-0.016, 0.006, 0.01], [0, 0.18, 0]));
+
+  // Main tube, stepped objective with pulled-out sunshade, ocular and rubber eyecup.
+  g.add(barrelCyl('steel-dark', 0.0152, 0.0152, 0.15, [0, centerY, 0.0], 18));
+  g.add(barrelCyl('steel-dark', 0.0178, 0.0152, 0.022, [0, centerY, -0.084], 18));
+  g.add(barrelCyl('steel-dark', 0.0182, 0.0182, 0.07, [0, centerY, -0.13], 18));
+  g.add(barrelCyl('gun-steel', 0.0192, 0.0192, 0.008, [0, centerY, -0.099], 18));
+  g.add(barrelCyl('steel-dark', 0.0152, 0.0182, 0.02, [0, centerY, 0.085], 18));
+  g.add(barrelCyl('glove', 0.0188, 0.0215, 0.05, [0, centerY, 0.12], 18));
+  // Concertina folds of the eyecup.
+  for (const fz of [0.106, 0.118, 0.13]) {
+    g.add(barrelCyl('glove', 0.0222, 0.0222, 0.004, [0, centerY, fz], 16));
+  }
+
+  // Turret saddle, tall elevation drum on top, windage drum on the right.
+  g.add(partBox('steel-dark', [0.034, 0.032, 0.03], [0, centerY, -0.014]));
+  g.add(uprightCyl('gun-steel', 0.0135, 0.0135, 0.02, [0, centerY + 0.026, -0.014], undefined, 16));
+  g.add(
+    uprightCyl('steel-dark', 0.0142, 0.0142, 0.004, [0, centerY + 0.038, -0.014], undefined, 16),
+  );
+  g.add(
+    uprightCyl(
+      'gun-steel',
+      0.0125,
+      0.0125,
+      0.018,
+      [0.026, centerY, -0.014],
+      [0, 0, -Math.PI / 2],
+      16,
+    ),
+  );
+  // Reticle-lamp battery housing hanging under the tube at the rear.
+  g.add(
+    uprightCyl('steel-dark', 0.008, 0.008, 0.026, [0.006, centerY - 0.02, 0.046], undefined, 12),
+  );
+
+  const lensMat = new THREE.MeshStandardMaterial({
+    color: 0x1a1420,
+    metalness: 0.78,
+    roughness: 0.08,
+  });
+  const frontLens = new THREE.Mesh(new THREE.CircleGeometry(0.0165, 18), lensMat);
+  frontLens.position.set(0, centerY, -0.15);
+  frontLens.rotation.y = Math.PI;
+  const rearLens = new THREE.Mesh(new THREE.CircleGeometry(0.014, 18), lensMat);
+  rearLens.position.set(0, centerY, 0.128);
+  g.add(frontLens, rearLens);
+
+  return railTopY + centerY;
+}
+
+/**
+ * Schmidt & Bender PM II 3–12×50 rifle scope
+ * (ref: reference/arsenal/br/schmidt-bender-pm-ii-3-12x50-scope-side--2.jpg and -3.jpg).
+ * Shorter and slimmer than the 5–25×56 on the AWM: 50 mm objective, 34 mm tube, the big
+ * double-turn elevation turret and a parallax drum on the left. Two separate rings.
+ */
+export function buildPm2Scope(parent: THREE.Object3D, railTopY: number, zCenter: number): number {
+  const g = new THREE.Group();
+  g.position.set(0, railTopY, zCenter);
+  parent.add(g);
+
+  const centerY = 0.04;
+  for (const rz of [-0.05, 0.058]) {
+    g.add(partBox('steel-dark', [0.024, 0.02, 0.018], [0, 0.011, rz]));
+    g.add(barrelCyl('steel-dark', 0.0205, 0.0205, 0.018, [0, centerY, rz], 18));
+    g.add(partBox('gun-steel', [0.03, 0.005, 0.012], [0, 0.004, rz]));
+  }
+
+  g.add(barrelCyl('steel-dark', 0.017, 0.017, 0.19, [0, centerY, 0.0], 20));
+  g.add(barrelCyl('steel-dark', 0.0275, 0.017, 0.05, [0, centerY, -0.118], 22));
+  g.add(barrelCyl('steel-dark', 0.028, 0.028, 0.052, [0, centerY, -0.168], 22));
+  g.add(barrelCyl('steel-dark', 0.017, 0.021, 0.03, [0, centerY, 0.108], 20));
+  g.add(barrelCyl('gun-steel', 0.0222, 0.0222, 0.018, [0, centerY, 0.13], 20));
+  g.add(barrelCyl('steel-dark', 0.0212, 0.0212, 0.046, [0, centerY, 0.162], 20));
+
+  g.add(partBox('steel-dark', [0.036, 0.036, 0.036], [0, centerY, 0.004]));
+  g.add(uprightCyl('gun-steel', 0.0165, 0.0165, 0.024, [0, centerY + 0.03, 0.004], undefined, 18));
+  g.add(
+    uprightCyl(
+      'gun-steel',
+      0.0125,
+      0.0125,
+      0.018,
+      [0.027, centerY, 0.004],
+      [0, 0, -Math.PI / 2],
+      16,
+    ),
+  );
+  g.add(
+    uprightCyl(
+      'gun-steel',
+      0.0145,
+      0.0145,
+      0.022,
+      [-0.029, centerY, 0.004],
+      [0, 0, Math.PI / 2],
+      16,
+    ),
+  );
+
+  const lensMat = new THREE.MeshStandardMaterial({
+    color: 0x0a1c28,
+    metalness: 0.75,
+    roughness: 0.08,
+  });
+  const frontLens = new THREE.Mesh(new THREE.CircleGeometry(0.0255, 20), lensMat);
+  frontLens.position.set(0, centerY, -0.192);
+  frontLens.rotation.y = Math.PI;
+  const rearLens = new THREE.Mesh(new THREE.CircleGeometry(0.0185, 20), lensMat);
+  rearLens.position.set(0, centerY, 0.1855);
+  g.add(frontLens, rearLens);
+
+  return railTopY + centerY;
+}
+
 export interface MountedOpticResult {
   readonly sightY: number;
   readonly sightZ: number;
@@ -728,6 +939,22 @@ export function buildMountedOptic(
         sightY,
         sightZ: zCenter + 0.085,
         aimDistance: 0.14,
+      };
+    }
+    case 'pso-1': {
+      const sightY = buildPsoScope(parent, railTopY, zCenter);
+      return {
+        sightY,
+        sightZ: zCenter + 0.13,
+        aimDistance: 0.135,
+      };
+    }
+    case 'pm2-8x': {
+      const sightY = buildPm2Scope(parent, railTopY, zCenter);
+      return {
+        sightY,
+        sightZ: zCenter + 0.165,
+        aimDistance: 0.135,
       };
     }
     case 'lpvo': {

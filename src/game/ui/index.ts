@@ -321,6 +321,15 @@ export function createGameUi(options: GameUiOptions) {
           case 'dry-fire':
             hud.onDryFire();
             break;
+          case 'armor-broken':
+            hud.onArmourBroken(event.piece, event.entity.kind === 'player');
+            break;
+          case 'consumable-cancel':
+            hud.onConsumableCancelled(event.id);
+            break;
+          case 'loot-taken':
+            hud.onLootTaken(event.item);
+            break;
           case 'targets-reset':
             hud.clearFeed();
             break;

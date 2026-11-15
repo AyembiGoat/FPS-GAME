@@ -68,6 +68,20 @@ export const PLAYER_TUNING = {
   aimSpeedFactor: 0.55,
 } as const;
 
+/** Where on the player's body a round landed, by height above the feet. Game balance. */
+export const PLAYER_HIT_ZONES = {
+  /** Hits within this many metres of the top of the body count as head hits. */
+  headHeight: 0.28,
+  /** Hits below this height above the feet count as leg hits. */
+  legsHeight: 0.85,
+} as const;
+
+export function playerHitZone(heightAboveFeet: number): 'head' | 'torso' | 'legs' {
+  if (heightAboveFeet >= PLAYER_TUNING.height - PLAYER_HIT_ZONES.headHeight) return 'head';
+  if (heightAboveFeet < PLAYER_HIT_ZONES.legsHeight) return 'legs';
+  return 'torso';
+}
+
 export const NO_INPUT: PlayerInput = {
   forward: 0,
   right: 0,
