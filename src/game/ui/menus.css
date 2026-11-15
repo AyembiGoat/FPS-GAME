@@ -1775,11 +1775,11 @@
 /* Column 3: Real Ballistic Stats Panel */
 .loadout-stats {
   min-height: 0;
-  padding: 14px 16px;
+  padding: 12px 16px;
   background: #0b1018;
   display: flex;
   flex-direction: column;
-  gap: 11px;
+  gap: 9px;
   overflow-y: auto;
 }
 
@@ -1807,13 +1807,14 @@
 .loadout-stats__list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  /* Kept tight so three attachment rows and their note fit under the bars at 720p. */
+  gap: 6px;
 }
 
 .loadout-stat {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
 }
 
 .loadout-stat__top {
@@ -1860,7 +1861,7 @@
 
 .loadout-stat__track {
   position: relative;
-  height: 7px;
+  height: 6px;
   border-radius: 1px;
   background: rgba(230, 238, 248, 0.14);
   overflow: hidden;
@@ -1917,8 +1918,8 @@
 .loadout-attach {
   display: flex;
   flex-direction: column;
-  gap: 7px;
-  padding-top: 10px;
+  gap: 6px;
+  padding-top: 8px;
   border-top: 1px solid var(--ui-edge-subtle);
 }
 
