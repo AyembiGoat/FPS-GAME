@@ -446,12 +446,179 @@ const sleeve: SurfaceRecipe = {
   },
 };
 
+/** Dark charcoal-slate ripstop combat cloth for hostile tactical operator uniforms. */
+const opforCloth: SurfaceRecipe = {
+  pixels: [128, 128],
+  tile: [0.06, 0.06],
+  relief: 0.00014,
+  metalness: 0,
+  texel(u, v, t, out) {
+    const grain = t.noise(u, v, 64, 64, 172);
+    const rip = 1 - smoothstep(0.01, 0.026, Math.min(toNearest(u, 0.125), toNearest(v, 0.125)));
+    const wear = (t.fbm(u, v, 4, 4, 2, 173) - 0.5) * 0.18;
+    const tone = 0.92 + (grain - 0.5) * 0.09 + rip * 0.04 + wear;
+    out.r = 38 * tone;
+    out.g = 43 * tone;
+    out.b = 49 * tone;
+    out.height = grain * 0.5 + rip * 0.5;
+    out.roughness = 0.91;
+  },
+};
+
+/** Heavy 1000D woven Cordura nylon for plate carriers, pouches, and tactical belts. */
+const corduraCrimson: SurfaceRecipe = {
+  pixels: [128, 128],
+  tile: [0.05, 0.05],
+  relief: 0.00025,
+  metalness: 0,
+  texel(u, v, t, out) {
+    const weaveU = Math.abs(Math.sin(u * Math.PI * 36));
+    const weaveV = Math.abs(Math.sin(v * Math.PI * 36));
+    const weave = weaveU * 0.5 + weaveV * 0.5;
+    const dirt = (t.fbm(u, v, 5, 5, 3, 181) - 0.5) * 0.16;
+    const tone = 0.86 + weave * 0.16 + dirt;
+    // Muted rust-burgundy / dark brick-earth tactical webbing patch & trim accent for clear silhouette ID.
+    out.r = 124 * tone;
+    out.g = 46 * tone;
+    out.b = 38 * tone;
+    out.height = weave;
+    out.roughness = 0.87;
+  },
+};
+
+/** Dark compacted port-terminal asphalt with limestone aggregate grit, roller wear, and joint tar seams. */
+const asphaltFloor: SurfaceRecipe = {
+  pixels: [1024, 1024],
+  tile: [5, 5],
+  relief: 0.0045,
+  metalness: 0,
+  texel(u, v, t, out) {
+    const big = t.fbm(u, v, 4, 4, 4, 201);
+    const mid = t.fbm(u, v, 18, 18, 3, 202);
+    const agg = t.noise(u, v, 320, 320, 203);
+    const speck = smoothstep(0.84, 0.96, t.noise(u, v, 240, 240, 204));
+    let shade = 64 + (big - 0.5) * 18 + (mid - 0.5) * 12 + (agg - 0.5) * 16 + speck * 32;
+    let height = 0.55 + (agg - 0.5) * 0.36 + speck * 0.18;
+
+    // Subtle heavy-truck tyre polish track along V
+    const track = smoothstep(0.45, 0.85, t.fbm(u, v, 6, 2, 2, 205)) * 0.14;
+    shade -= track * 18;
+
+    // Poured tar joint line every 5 m
+    const seam = 1 - smoothstep(0.002, 0.006, Math.min(toNearest(u, 1), toNearest(v, 1)));
+    shade = mix(shade, 34, seam * 0.75);
+    height -= seam * 0.28;
+
+    out.r = shade * 0.98;
+    out.g = shade * 0.99;
+    out.b = shade * 1.03;
+    out.height = height;
+    out.roughness = 0.88 - track * 0.18 - seam * 0.22;
+  },
+};
+
+/** Corrugated maritime steel shipping container panels in weathered cargo-oxide red. */
+const containerRed: SurfaceRecipe = {
+  pixels: [256, 256],
+  tile: [2.0, 2.6],
+  relief: 0.018,
+  metalness: 0.34,
+  texel(u, v, t, out) {
+    const ribPhase = (u * 10) % 1;
+    const rib = smoothstep(0.12, 0.26, ribPhase) * (1 - smoothstep(0.62, 0.76, ribPhase));
+    const wear = t.fbm(u, v, 6, 6, 3, 211);
+    const scuff = smoothstep(0.74, 0.88, wear) * (1 - smoothstep(0.08, 0.36, v));
+    const grime = (1 - smoothstep(0, 0.16, v)) * 0.26;
+    const fine = t.noise(u, v, 90, 90, 212);
+
+    const shade = (0.86 + rib * 0.2 + (fine - 0.5) * 0.06) * (1 - grime);
+    let r = 136 * shade;
+    let g = 52 * shade;
+    let b = 42 * shade;
+    r = mix(r, 84, scuff * 0.6);
+    g = mix(g, 58, scuff * 0.6);
+    b = mix(b, 48, scuff * 0.6);
+
+    out.r = r;
+    out.g = g;
+    out.b = b;
+    out.height = 0.25 + rib * 0.72 + (fine - 0.5) * 0.04;
+    out.roughness = 0.58 + scuff * 0.26 + grime * 0.2;
+  },
+};
+
+/** Running-bond industrial clay brick masonry with recessed mortar joints for warehouse walls. */
+const brickWall: SurfaceRecipe = {
+  pixels: [512, 512],
+  tile: [1.6, 1.6],
+  relief: 0.006,
+  metalness: 0,
+  texel(u, v, t, out) {
+    // 18 courses vertically (~89 mm each), 6.5 bricks horizontally (~246 mm each)
+    const rows = 18;
+    const cols = 6;
+    const vy = v * rows;
+    const rowIdx = Math.floor(vy);
+    const rowFrac = vy - rowIdx;
+    const stagger = (rowIdx % 2) * 0.5;
+    const ux = u * cols + stagger;
+    const colIdx = Math.floor(ux);
+    const colFrac = ux - colIdx;
+
+    const mortarV = 1 - smoothstep(0.045, 0.095, Math.min(rowFrac, 1 - rowFrac));
+    const mortarU = 1 - smoothstep(0.022, 0.048, Math.min(colFrac, 1 - colFrac));
+    const mortar = Math.max(mortarU, mortarV);
+
+    const brickHash = t.hash(colIdx * 37 + rowIdx * 101, 221);
+    const big = t.fbm(u, v, 3, 3, 3, 222);
+    const grit = t.noise(u, v, 140, 140, 223);
+
+    const brickTone = 0.84 + brickHash * 0.28 + (big - 0.5) * 0.16 + (grit - 0.5) * 0.08;
+    const br = 126 * brickTone;
+    const bg = 68 * brickTone;
+    const bb = 52 * brickTone;
+
+    const mr = 132 + (grit - 0.5) * 18;
+    const mg = 126 + (grit - 0.5) * 18;
+    const mb = 116 + (grit - 0.5) * 16;
+
+    out.r = mix(br, mr, mortar);
+    out.g = mix(bg, mg, mortar);
+    out.b = mix(bb, mb, mortar);
+    out.height = mix(0.76 + (grit - 0.5) * 0.16, 0.22, mortar);
+    out.roughness = mix(0.86, 0.94, mortar);
+  },
+};
+
+/** Painted structural steel I-beams, portal columns, and dock canopy framing. */
+const girderSteel: SurfaceRecipe = {
+  pixels: [256, 256],
+  tile: [1.5, 1.5],
+  relief: 0.002,
+  metalness: 0.48,
+  texel(u, v, t, out) {
+    const mottle = t.fbm(u, v, 5, 5, 3, 231);
+    const fine = t.noise(u, v, 96, 96, 232);
+    const edgeWear = smoothstep(0.78, 0.92, t.fbm(u, v, 9, 9, 3, 233));
+    const shade = 48 + (mottle - 0.5) * 12 + (fine - 0.5) * 6 + edgeWear * 18;
+    out.r = shade * 0.96;
+    out.g = shade * 1.01;
+    out.b = shade * 1.07;
+    out.height = 0.55 + (fine - 0.5) * 0.2 - edgeWear * 0.15;
+    out.roughness = 0.52 + (mottle - 0.5) * 0.14;
+  },
+};
+
 export const RECIPES = {
   'concrete-wall': concreteWall,
   'concrete-floor': concreteFloor,
+  'asphalt-floor': asphaltFloor,
   plywood,
   crate,
   'container-steel': containerSteel,
+  'container-red': containerRed,
+  'brick-wall': brickWall,
+  'girder-steel': girderSteel,
   'timber-frame': timberFrame,
   'target-steel': targetSteel,
   'gun-steel': gunSteel,
@@ -464,4 +631,6 @@ export const RECIPES = {
   walnut,
   glove,
   sleeve,
+  'opfor-cloth': opforCloth,
+  'cordura-crimson': corduraCrimson,
 } satisfies Record<string, SurfaceRecipe>;

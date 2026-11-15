@@ -10,14 +10,19 @@ const PUFF_LIFE = 0.32;
 const CASINGS = 28;
 const CASING_LIFE = 1.65;
 
-const DUST: Record<SurfaceMaterial | 'target', number> = {
+const DUST: Record<SurfaceMaterial | 'target' | 'enemy', number> = {
   floor: 0xcfc8b8,
+  asphalt: 0x6f747d,
   concrete: 0xc4c0b6,
+  brick: 0xb9755d,
   plywood: 0xc9a878,
   crate: 0xb89868,
   container: 0xd0d8e0,
+  'container-red': 0xd8a298,
   timber: 0x8e7254,
+  steel: 0xaab4c0,
   target: 0xffd28a,
+  enemy: 0x8b7e6d,
 };
 
 interface CasingSlot {
@@ -95,6 +100,22 @@ export function createEffects(scene: THREE.Scene) {
   let nextCasing = 0;
   let activeCasings = 0;
 
+  // 4. Instanced supersonic tracer streaks for enemy incoming volleys (1 draw call total).
+  const TRACERS = 16;
+  const TRACER_LIFE = 0.095;
+  const tracerGeom = new THREE.BoxGeometry(0.018, 0.018, 1.0);
+  tracerGeom.translate(0, 0, 0.5);
+  const tracerMat = new THREE.MeshBasicMaterial({
+    color: 0xffc878,
+    transparent: true,
+    opacity: 0.85,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const tracerMesh = new THREE.InstancedMesh(tracerGeom, tracerMat, TRACERS);
+  tracerMesh.count = TRACERS;
+  tracerMesh.frustumCulled = false;
+
   // Scratch math objects reused across calls.
   const facing = new THREE.Vector3(0, 0, 1);
   const normalVector = new THREE.Vector3();
@@ -102,13 +123,24 @@ export function createEffects(scene: THREE.Scene) {
   const ejectRight = new THREE.Vector3();
   const ejectUp = new THREE.Vector3();
   const ejectBack = new THREE.Vector3();
+  const tracerFrom = new THREE.Vector3();
+  const tracerTo = new THREE.Vector3();
+
+  const tracers = Array.from({ length: TRACERS }, (_, i) => {
+    tracerMesh.setMatrixAt(i, zeroMatrix);
+    return { active: false, life: 0, start: new THREE.Vector3(), end: new THREE.Vector3() };
+  });
+  tracerMesh.instanceMatrix.needsUpdate = true;
+  scene.add(tracerMesh);
+  let nextTracer = 0;
+  let activeTracers = 0;
 
   return {
-    impact(point: Vec3, normal: Vec3, surface: SurfaceMaterial | 'target') {
+    impact(point: Vec3, normal: Vec3, surface: SurfaceMaterial | 'target' | 'enemy') {
       normalVector.set(normal.x, normal.y, normal.z);
 
-      // Targets fall over, so a hole left hanging in the air would be wrong.
-      if (surface !== 'target') {
+      // Moving/falling targets and human combatants never get floating static wall bullet holes.
+      if (surface !== 'target' && surface !== 'enemy') {
         dummy.position.set(point.x, point.y, point.z).addScaledVector(normalVector, 0.0025);
         dummy.quaternion.setFromUnitVectors(facing, normalVector);
         dummy.scale.setScalar(0.85 + Math.random() * 0.32);
@@ -185,6 +217,35 @@ export function createEffects(scene: THREE.Scene) {
       if (casingMesh.instanceColor) casingMesh.instanceColor.needsUpdate = true;
     },
 
+    /** Spawn a brief visible bullet tracer streak from enemy muzzle toward impact. */
+    tracer(origin: Vec3, endPoint: Vec3) {
+      const slot = tracers[nextTracer];
+      const idx = nextTracer;
+      nextTracer = (nextTracer + 1) % TRACERS;
+      if (!slot) return;
+      if (!slot.active) activeTracers++;
+      slot.active = true;
+      slot.life = TRACER_LIFE;
+      slot.start.set(origin.x, origin.y, origin.z);
+      slot.end.set(endPoint.x, endPoint.y, endPoint.z);
+
+      const dist = slot.start.distanceTo(slot.end);
+      const segLen = Math.min(dist * 0.45, 5.5);
+      dummy.position.copy(slot.start);
+      dummy.lookAt(slot.end);
+      dummy.scale.set(1, 1, Math.max(0.4, segLen));
+      dummy.updateMatrix();
+      tracerMesh.setMatrixAt(idx, dummy.matrix);
+      tracerMesh.instanceMatrix.needsUpdate = true;
+    },
+
+    /** Clear bullet decals when starting a fresh match. */
+    clearDecals() {
+      nextHole = 0;
+      activeHoles = 0;
+      holeMesh.count = 0;
+    },
+
     update(dt: number) {
       for (const puff of puffs) {
         if (puff.life <= 0) continue;
@@ -230,6 +291,52 @@ export function createEffects(scene: THREE.Scene) {
           casingMesh.setMatrixAt(i, dummy.matrix);
         }
         if (dirty) casingMesh.instanceMatrix.needsUpdate = true;
+      }
+
+      if (activeTracers > 0) {
+        let dirty = false;
+        for (let i = 0; i < TRACERS; i++) {
+          const tr = tracers[i];
+          if (!tr || !tr.active) continue;
+          dirty = true;
+          tr.life -= dt;
+          if (tr.life <= 0) {
+            tr.active = false;
+            activeTracers--;
+            tracerMesh.setMatrixAt(i, zeroMatrix);
+            continue;
+          }
+          const progress = 1 - tr.life / TRACER_LIFE;
+          const totalDist = tr.start.distanceTo(tr.end);
+          const segLen = Math.min(totalDist * 0.42, 5.2);
+          tracerFrom.lerpVectors(tr.start, tr.end, progress * 0.72);
+          tracerTo.copy(tr.end);
+          dummy.position.copy(tracerFrom);
+          dummy.lookAt(tracerTo);
+          dummy.scale.set(
+            1 - progress * 0.45,
+            1 - progress * 0.45,
+            Math.max(0.3, segLen * (1 - progress * 0.5)),
+          );
+          dummy.updateMatrix();
+          tracerMesh.setMatrixAt(i, dummy.matrix);
+        }
+        if (dirty) tracerMesh.instanceMatrix.needsUpdate = true;
+      }
+    },
+
+    dispose() {
+      scene.remove(holeMesh, casingMesh, tracerMesh);
+      holeGeometry.dispose();
+      holeMaterial.dispose();
+      casingGeom.dispose();
+      casingMat.dispose();
+      tracerGeom.dispose();
+      tracerMat.dispose();
+      dot.dispose();
+      for (const p of puffs) {
+        scene.remove(p.sprite);
+        p.sprite.material.dispose();
       }
     },
   };

@@ -458,6 +458,10 @@ export function createViewmodel(
       sun.position.copy(direction).multiplyScalar(4);
     },
 
+    setEnvironment(env: THREE.Texture | null) {
+      scene.environment = env;
+    },
+
     reloadTiming() {
       return active.model.reload;
     },

@@ -6,6 +6,9 @@ export type IconName =
   | 'play'
   | 'resume'
   | 'restart'
+  | 'modes'
+  | 'shield'
+  | 'skull'
   | 'loadout'
   | 'settings'
   | 'controls'
@@ -64,6 +67,27 @@ export function createIcon(name: IconName, className = 'ui-icon'): SVGSVGElement
       break;
     case 'restart':
       svg.append(strokePath('M4.6 8.2A5.8 5.8 0 1 1 5.4 13.8'), strokePath('M4.2 4.6v3.8H8'));
+      break;
+    case 'modes':
+      svg.append(
+        strokePath(
+          'M3.2 3.8h5.6v5.2H3.2zM11.2 3.8h5.6v5.2h-5.6zM3.2 11h5.6v5.2H3.2zM11.2 11h5.6v5.2h-5.6z',
+        ),
+      );
+      break;
+    case 'shield':
+      svg.append(
+        strokePath('M10 2.6L16.2 5v4.6c0 3.9-2.6 6.8-6.2 8-3.6-1.2-6.2-4.1-6.2-8V5L10 2.6Z'),
+        strokePath('M10 6.8v4.8M7.6 9.2h4.8'),
+      );
+      break;
+    case 'skull':
+      svg.append(
+        strokePath(
+          'M10 3.2a5.4 5.4 0 0 0-5.4 5.4c0 2 .9 3.6 2.3 4.5v2.7h6.2v-2.7c1.4-.9 2.3-2.5 2.3-4.5A5.4 5.4 0 0 0 10 3.2Z',
+        ),
+        strokePath('M8 9.2h.01M12 9.2h.01M8.8 15.8v-1.6M11.2 15.8v-1.6'),
+      );
       break;
     case 'loadout':
       svg.append(

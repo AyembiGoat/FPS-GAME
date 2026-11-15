@@ -1,31 +1,31 @@
 /**
- * A scripted player. It walks the map, finds standing targets and shoots them using
- * the same inputs a person has, including leaning round cover, aiming down the
- * sights, sprinting between engagements, and switching to its sidearm when dry.
- * It exists so that tests and agents can play the game: if the bot can clear the
- * map, movement, collision, the weapons and the level layout all work together.
+ * Deterministic scripted player bot for automated playtesting and core verification.
  *
- * Whatever a player can do, the bot must be able to do. A new ability gets a new
- * input in GameInput, and the bot is taught when to use it in the same change.
+ * Uses the exact same `GameInput` contract a human player has (WASD, sprint, lean, ADS,
+ * fire, reload, slot switch) and handles both:
+ *  - Combat modes (`combat`, `veteran`): navigates the compound via `findPath`, leans corners,
+ *    prioritizes head/upper-torso shots on live enemy combatants, strafes while engaging, and
+ *    reloads/swaps weapons safely.
+ *  - Target Range mode (`range`): clears all standing AR500 steel silhouettes across the map.
  */
 
 import type { Box } from './collision';
 import { bodyBox, overlaps, raycast } from './collision';
+import type { EnemyState } from './enemy';
 import type { GameInput, GameState } from './game';
 import { activeWeaponSpec, targetCentre, targetHitBoxes } from './game';
 import type { GameMap } from './map';
+import { getGameModeSpec } from './modes';
 import { eyeAt, eyePosition, leanRoom, NO_INPUT, PLAYER_TUNING } from './player';
 import type { Vec3 } from './vec';
-import { angleDelta, clamp, length, sub } from './vec';
+import { angleDelta, clamp, length, sub, vec3 } from './vec';
 import type { WeaponSlot } from './weapon';
 import { getWeaponSpec } from './weapon';
 
 const CELL = 0.4;
-/** Leans shallower than this are not worth taking. */
 const MIN_USEFUL_LEAN = 0.15;
-/** Radians per step the bot may turn. Roughly a quick human flick. */
-const MAX_TURN = 0.14;
-const AIM_TOLERANCE = 0.004;
+const MAX_TURN = 0.18;
+const AIM_TOLERANCE = 0.008;
 const CLEARANCE = 0.08;
 
 interface Grid {
@@ -41,7 +41,6 @@ function buildGrid(map: GameMap): Grid {
   for (let j = 0; j < depth; j++) {
     for (let i = 0; i < width; i++) {
       const centre = cellCentre(map, i, j);
-      // Lifted off the floor so the floor slab itself does not count as blocking.
       const body = bodyBox(
         { x: centre.x, y: 0.05, z: centre.z },
         PLAYER_TUNING.radius + CLEARANCE,
@@ -70,7 +69,6 @@ const NEIGHBOURS = [
   [0, -1],
 ] as const;
 
-/** Walking distance, in cells, from every open cell to `goal`. */
 function distanceField(grid: Grid, goal: number): number[] {
   const distance = new Array<number>(grid.open.length).fill(Infinity);
   const queue = [goal];
@@ -111,11 +109,20 @@ function turnToward(current: number, wanted: number): number {
   return clamp(angleDelta(current, wanted), -MAX_TURN, MAX_TURN);
 }
 
+function enemyAimPoint(enemy: EnemyState, preferTorso: boolean): Vec3 {
+  if (preferTorso) {
+    const y = enemy.crouched ? 0.88 : 1.24;
+    return vec3(enemy.position.x, enemy.position.y + y, enemy.position.z);
+  }
+  // Head center (`1.10..1.38` crouched, `1.48..1.78` standing).
+  const y = enemy.crouched ? 1.24 : 1.63;
+  return vec3(enemy.position.x, enemy.position.y + y, enemy.position.z);
+}
+
 export type Bot = (state: GameState) => GameInput;
 
 export function createBot(map: GameMap): Bot {
   const grid = buildGrid(map);
-  // One field per target, leading to the open cell just in front of its plate.
   const fields = map.targets.map((target) =>
     distanceField(
       grid,
@@ -128,7 +135,24 @@ export function createBot(map: GameMap): Bot {
     ),
   );
 
-  function canSee(eye: Vec3, index: number, state: GameState, range: number): boolean {
+  // Cached navigation state for enemy combat pursuit.
+  let cachedGoalCell = -1;
+  let cachedField: number[] | null = null;
+  let cachedTick = 0;
+
+  function canSeePoint(eye: Vec3, point: Vec3, range: number): boolean {
+    const toPoint = sub(point, eye);
+    const distance = length(toPoint);
+    if (distance > range || distance < 0.05) return false;
+    const direction = {
+      x: toPoint.x / distance,
+      y: toPoint.y / distance,
+      z: toPoint.z / distance,
+    };
+    return raycast(eye, direction, distance - 0.08, map.solids) === null;
+  }
+
+  function canSeeTarget(eye: Vec3, index: number, state: GameState, range: number): boolean {
     const target = map.targets[index];
     if (!target) return false;
     const toTarget = sub(targetCentre(target), eye);
@@ -142,30 +166,219 @@ export function createBot(map: GameMap): Bot {
     const others: Box[] = map.targets.flatMap((spawn, other) =>
       other === index || state.targetsDown[other] ? [] : targetHitBoxes(spawn),
     );
-    // The plate is visible if nothing else is hit before reaching it.
     return raycast(eye, direction, distance - 0.05, [...map.solids, ...others]) === null;
   }
 
-  /**
-   * Which way to lean to see a target from where the bot stands: 0 if it is visible
-   * standing straight, -1 or 1 if only a lean reveals it, null if it cannot be seen.
-   */
-  function leanToSee(state: GameState, index: number, range: number): -1 | 0 | 1 | null {
+  function leanToSeeTarget(state: GameState, index: number, range: number): -1 | 0 | 1 | null {
     const target = map.targets[index];
     if (!target) return null;
     const feet = state.player.position;
-    // Judge the lean as it will be once the bot has turned to face the target.
     const yaw = Math.atan2(feet.x - target.position.x, feet.z - target.position.z);
-    if (canSee(eyeAt(feet, yaw, 0), index, state, range)) return 0;
+    if (canSeeTarget(eyeAt(feet, yaw, 0), index, state, range)) return 0;
     for (const side of [-1, 1] as const) {
       const room = leanRoom(feet, yaw, side, map.solids);
       if (room < MIN_USEFUL_LEAN) continue;
-      if (canSee(eyeAt(feet, yaw, side * room), index, state, range)) return side;
+      if (canSeeTarget(eyeAt(feet, yaw, side * room), index, state, range)) return side;
     }
     return null;
   }
 
+  function leanToSeeEnemy(
+    state: GameState,
+    enemy: EnemyState,
+    preferTorso: boolean,
+    range: number,
+  ): { readonly side: -1 | 0 | 1; readonly aimPt: Vec3 } | null {
+    const feet = state.player.position;
+    const yaw = Math.atan2(feet.x - enemy.position.x, feet.z - enemy.position.z);
+    const primaryPt = enemyAimPoint(enemy, preferTorso);
+    const fallbackPt = enemyAimPoint(enemy, !preferTorso);
+
+    for (const pt of [primaryPt, fallbackPt]) {
+      if (canSeePoint(eyeAt(feet, yaw, 0), pt, range)) {
+        return { side: 0, aimPt: pt };
+      }
+    }
+    for (const side of [-1, 1] as const) {
+      const room = leanRoom(feet, yaw, side, map.solids);
+      if (room < MIN_USEFUL_LEAN) continue;
+      const leanedEye = eyeAt(feet, yaw, side * room);
+      for (const pt of [primaryPt, fallbackPt]) {
+        if (canSeePoint(leanedEye, pt, range)) {
+          return { side, aimPt: pt };
+        }
+      }
+    }
+    return null;
+  }
+
+  const idleInput: GameInput = { ...NO_INPUT, fire: false, reload: false, aim: false };
+
+  function stepEnemyCombatBot(state: GameState): GameInput {
+    cachedTick++;
+    if (state.outcome !== 'ongoing') {
+      return idleInput;
+    }
+
+    const { player, weapon } = state;
+    const modeSpec = getGameModeSpec(state.mode);
+    const spec = activeWeaponSpec(state);
+    const otherSlot: WeaponSlot = weapon.activeSlot === 'primary' ? 'secondary' : 'primary';
+    const otherSpec = getWeaponSpec(weapon.loadout[otherSlot]);
+    const isBuckshot = spec.pellets > 1;
+    const effectiveEngageRange = isBuckshot
+      ? Math.min(spec.range, 20)
+      : spec.category === 'pistol'
+        ? Math.min(spec.range, 34)
+        : spec.range;
+
+    // Find best visible live enemy (prioritize enemies that can see us or are closest) and closest overall.
+    let bestVisible: {
+      enemy: EnemyState;
+      side: -1 | 0 | 1;
+      aimPt: Vec3;
+      score: number;
+    } | null = null;
+    let closestEnemy: EnemyState | null = null;
+    let closestDist = Infinity;
+
+    for (const enemy of state.enemies) {
+      if (!enemy.alive) continue;
+      const d = Math.hypot(
+        enemy.position.x - player.position.x,
+        enemy.position.z - player.position.z,
+      );
+      if (d < closestDist) {
+        closestDist = d;
+        closestEnemy = enemy;
+      }
+
+      const peek = leanToSeeEnemy(state, enemy, isBuckshot, effectiveEngageRange);
+      if (peek) {
+        const threatBonus = enemy.canSeePlayer ? -18 : 0;
+        const score = d + threatBonus + (peek.side !== 0 ? 1.5 : 0);
+        if (!bestVisible || score < bestVisible.score) {
+          bestVisible = { enemy, side: peek.side, aimPt: peek.aimPt, score };
+        }
+      }
+    }
+
+    // Prefer primary weapon whenever safe (unless playing Gun Game where weapon tier is locked).
+    if (
+      !modeSpec.usesWeaponLadder &&
+      !bestVisible &&
+      weapon.activeSlot === 'secondary' &&
+      weapon.switchRemaining === 0 &&
+      weapon.reloadRemaining === 0
+    ) {
+      return { ...idleInput, switchSlot: 'primary' };
+    }
+
+    if (weapon.rounds === 0 && weapon.reloadRemaining === 0 && weapon.switchRemaining === 0) {
+      if (
+        !modeSpec.usesWeaponLadder &&
+        bestVisible &&
+        weapon.slotRounds[otherSlot] > 0 &&
+        otherSpec.equipTime < spec.reloadTime
+      ) {
+        return { ...idleInput, switchSlot: otherSlot };
+      }
+      return { ...idleInput, reload: true };
+    }
+
+    if (bestVisible) {
+      const eye = eyePosition(player);
+      const to = sub(bestVisible.aimPt, eye);
+      const dist = length(to);
+      const wantedYaw = Math.atan2(-to.x, -to.z);
+      const wantedPitch = Math.atan2(to.y, Math.hypot(to.x, to.z));
+      const yawError = angleDelta(player.yaw, wantedYaw);
+      const pitchError = wantedPitch - (player.pitch + weapon.recoil);
+      const tolerance = isBuckshot ? 0.025 : Math.max(AIM_TOLERANCE, 0.11 / Math.max(4, dist));
+      const onTarget = Math.abs(yawError) < tolerance && Math.abs(pitchError) < tolerance;
+      const canTrigger = spec.fireMode === 'auto' ? true : !weapon.triggerHeld;
+      const ready =
+        weapon.switchRemaining === 0 &&
+        weapon.reloadRemaining === 0 &&
+        weapon.aim >= 0.95 &&
+        canTrigger &&
+        weapon.cooldown === 0;
+
+      // Subtle lateral combat strafe when standing in the open so incoming enemy bursts miss more often.
+      const strafe: -1 | 0 | 1 =
+        bestVisible.side !== 0 ? 0 : Math.floor(cachedTick / 32) % 2 === 0 ? 1 : -1;
+
+      return {
+        ...NO_INPUT,
+        right: strafe * 0.65,
+        forward: isBuckshot && dist > 11 ? 1 : 0,
+        yawDelta: clamp(yawError, -MAX_TURN, MAX_TURN),
+        pitchDelta: clamp(pitchError, -MAX_TURN, MAX_TURN),
+        lean: bestVisible.side,
+        aim: weapon.switchRemaining === 0 && weapon.reloadRemaining === 0,
+        fire: onTarget && ready && canSeePoint(eye, bestVisible.aimPt, spec.range),
+        reload: false,
+      };
+    }
+
+    if (!closestEnemy) {
+      return idleInput;
+    }
+
+    const rawHere = cellAt(map, grid, player.position.x, player.position.z);
+    const here = grid.open[rawHere]
+      ? rawHere
+      : nearestOpenCell(map, grid, player.position.x, player.position.z);
+    const goalCell = nearestOpenCell(map, grid, closestEnemy.position.x, closestEnemy.position.z);
+
+    if (goalCell !== cachedGoalCell || !cachedField || cachedTick % 30 === 0) {
+      cachedField = distanceField(grid, goalCell);
+      cachedGoalCell = goalCell;
+    }
+
+    let next = here;
+    let nextDistance = cachedField[here] ?? Infinity;
+    const i = here % grid.width;
+    const j = Math.floor(here / grid.width);
+    for (const [di, dj] of NEIGHBOURS) {
+      const ni = i + di;
+      const nj = j + dj;
+      if (ni < 0 || nj < 0 || ni >= grid.width || nj >= grid.depth) continue;
+      const cell = nj * grid.width + ni;
+      const d = cachedField[cell] ?? Infinity;
+      if (d < nextDistance) {
+        nextDistance = d;
+        next = cell;
+      }
+    }
+
+    const wp = cellCentre(map, next % grid.width, Math.floor(next / grid.width));
+    const dx = wp.x - player.position.x;
+    const dz = wp.z - player.position.z;
+    const wantedYaw = Math.atan2(-dx, -dz);
+    const yawDelta = turnToward(player.yaw, wantedYaw);
+    const facing = Math.abs(angleDelta(player.yaw + yawDelta, wantedYaw)) < 0.35;
+    const shouldReload =
+      weapon.reloadRemaining === 0 && weapon.rounds < Math.ceil(spec.magazineSize * 0.5);
+
+    return {
+      ...NO_INPUT,
+      yawDelta,
+      pitchDelta: clamp(-player.pitch, -MAX_TURN, MAX_TURN),
+      forward: facing ? 1 : 0,
+      sprint: facing && nextDistance > 8 && !shouldReload && weapon.reloadRemaining === 0,
+      reload: shouldReload,
+      fire: false,
+    };
+  }
+
   return (state) => {
+    const modeSpec = getGameModeSpec(state.mode);
+    if (modeSpec.usesEnemies) {
+      return stepEnemyCombatBot(state);
+    }
+
+    // Target Range mode (`range`): steel silhouette clearing loop.
     const { player, weapon } = state;
     const spec = activeWeaponSpec(state);
     const otherSlot: WeaponSlot = weapon.activeSlot === 'primary' ? 'secondary' : 'primary';
@@ -175,8 +388,6 @@ export function createBot(map: GameMap): Bot {
       ? rawHere
       : nearestOpenCell(map, grid, player.position.x, player.position.z);
 
-    // Prefer a target that can be engaged from here, standing or leaning. Otherwise
-    // head for the closest one by walking distance.
     let engage = -1;
     let lean: -1 | 0 | 1 = 0;
     let nearest = -1;
@@ -184,7 +395,7 @@ export function createBot(map: GameMap): Bot {
     map.targets.forEach((_, index) => {
       if (state.targetsDown[index]) return;
       if (engage < 0) {
-        const side = leanToSee(state, index, spec.range);
+        const side = leanToSeeTarget(state, index, spec.range);
         if (side !== null) {
           engage = index;
           lean = side;
@@ -197,8 +408,6 @@ export function createBot(map: GameMap): Bot {
       }
     });
 
-    // If out of ammo with a live target in sight and our backup firearm is loaded and
-    // quicker to draw than a full reload, switch slots immediately.
     if (weapon.rounds === 0 && weapon.reloadRemaining === 0 && weapon.switchRemaining === 0) {
       if (
         engage >= 0 &&
@@ -212,13 +421,11 @@ export function createBot(map: GameMap): Bot {
 
     const engaged = map.targets[engage];
     if (engaged) {
-      // Aim from where the eye really is right now, mid-lean included.
       const eye = eyePosition(player);
       const to = sub(targetCentre(engaged), eye);
       const wantedYaw = Math.atan2(-to.x, -to.z);
       const wantedPitch = Math.atan2(to.y, Math.hypot(to.x, to.z));
       const yawError = angleDelta(player.yaw, wantedYaw);
-      // Recoil lifts the real aim, so correct against where the muzzle actually points.
       const pitchError = wantedPitch - (player.pitch + weapon.recoil);
       const onTarget = Math.abs(yawError) < AIM_TOLERANCE && Math.abs(pitchError) < AIM_TOLERANCE;
       const canTrigger = spec.fireMode === 'auto' ? true : !weapon.triggerHeld;
@@ -234,7 +441,7 @@ export function createBot(map: GameMap): Bot {
         pitchDelta: clamp(pitchError, -MAX_TURN, MAX_TURN),
         lean,
         aim: weapon.switchRemaining === 0 && weapon.reloadRemaining === 0,
-        fire: onTarget && ready && canSee(eye, engage, state, spec.range),
+        fire: onTarget && ready && canSeeTarget(eye, engage, state, spec.range),
         reload: false,
       };
     }
@@ -242,7 +449,6 @@ export function createBot(map: GameMap): Bot {
     const field = fields[nearest];
     if (!field) return { ...NO_INPUT, fire: false, reload: weapon.rounds < spec.magazineSize };
 
-    // Step to whichever neighbouring cell is closer to the goal.
     let next = here;
     let nextDistance = field[here] ?? Infinity;
     const i = here % grid.width;
@@ -265,8 +471,6 @@ export function createBot(map: GameMap): Bot {
     const wantedYaw = Math.atan2(-dx, -dz);
     const yawDelta = turnToward(player.yaw, wantedYaw);
     const facing = Math.abs(angleDelta(player.yaw + yawDelta, wantedYaw)) < 0.3;
-
-    // Top up between targets rather than running dry in front of the next one.
     const shouldReload = weapon.rounds < Math.ceil(spec.magazineSize / 2);
 
     return {

@@ -2,11 +2,13 @@ import * as THREE from 'three';
 import type { GameEvent, GameState } from '../core/game';
 import { activeWeaponSpec } from '../core/game';
 import type { GameMap } from '../core/map';
+import { getGameModeSpec } from '../core/modes';
 import { eyeAt, PLAYER_TUNING } from '../core/player';
 import type { OpticId, ScopeOverlayKind, WeaponId } from '../core/weapon';
 import { currentOpticZoom, OPTICS } from '../core/weapon';
 import type { GameAudio } from './audio';
 import { createEffects } from './effects';
+import { createEnemyCrowd } from './enemies';
 import { createViewmodel } from './weapons/viewmodel';
 import { buildWorld } from './world';
 
@@ -21,8 +23,8 @@ const RESOLUTION_STEP = 0.85;
 const SLOW_FRAME_SECONDS = 0.019;
 /** Radians the world camera rolls at full lean (~8.3 deg). */
 const LEAN_ROLL = 0.145;
-/** Minimum seconds between shadow re-rasterizations while targets are falling. */
-const SHADOW_UPDATE_INTERVAL = 0.065;
+/** Minimum seconds between shadow re-rasterizations while actors/targets are moving. */
+const SHADOW_UPDATE_INTERVAL = 0.22;
 
 /** The lens angle that magnifies the centre of the view `zoom` times. */
 function zoomedFieldOfView(baseFov: number, zoom: number): number {
@@ -60,7 +62,8 @@ export interface ScopeOverlayState {
 }
 
 /** Everything the player sees and hears. Reads simulation state; never changes it. */
-export function createView(map: GameMap, audio: GameAudio) {
+export function createView(initialMap: GameMap, audio: GameAudio) {
+  let activeMap = initialMap;
   const renderer = new THREE.WebGLRenderer({
     antialias: true,
     powerPreference: 'high-performance',
@@ -71,7 +74,7 @@ export function createView(map: GameMap, audio: GameAudio) {
   renderer.shadowMap.autoUpdate = false;
   let shadowsStale = true;
   let shadowCooldown = 0;
-  let targetsWereMoving = false;
+  let actorsWereMoving = false;
   let slowSeconds = 0;
   let smoothSeconds = 0;
   let secondsBeforeRaising = 8;
@@ -80,11 +83,12 @@ export function createView(map: GameMap, audio: GameAudio) {
   renderer.autoClear = false;
   document.body.prepend(renderer.domElement);
 
-  const world = buildWorld(map, renderer);
+  let world = buildWorld(activeMap, renderer);
+  let enemyCrowd = createEnemyCrowd(world.scene);
   let baseFov = DEFAULT_FIELD_OF_VIEW;
   const camera = new THREE.PerspectiveCamera(baseFov, 1, 0.05, 3000);
   camera.rotation.order = 'YXZ';
-  const effects = createEffects(world.scene);
+  let effects = createEffects(world.scene);
 
   // Single viewmodel rig with lazy weapon+optic caching (zero hitching on swap).
   const initialSpec = activeWeaponSpec({
@@ -113,11 +117,13 @@ export function createView(map: GameMap, audio: GameAudio) {
 
   let landOffset = 0;
   let landVelocity = 0;
+  let flinchPitch = 0;
+  let flinchRoll = 0;
   let walked = 0;
   let lastStride = 0;
-  let lastYaw = map.spawn.yaw;
+  let lastYaw = activeMap.spawn.yaw;
   let lastPitch = 0;
-  const lastPosition = new THREE.Vector3(map.spawn.position.x, 0, map.spawn.position.z);
+  const lastPosition = new THREE.Vector3(activeMap.spawn.position.x, 0, activeMap.spawn.position.z);
   const sunInView = new THREE.Vector3();
   const toSound = new THREE.Vector3();
   const rightward = new THREE.Vector3();
@@ -131,6 +137,8 @@ export function createView(map: GameMap, audio: GameAudio) {
   let aimDirection = -1;
   let reloadStartedEmpty = false;
   let orbitClock = 0;
+  let animClock = 0;
+  let lastModeTargetsVisible: boolean | null = null;
   let scopeState: ScopeOverlayState = {
     active: false,
     style: 'none',
@@ -140,6 +148,17 @@ export function createView(map: GameMap, audio: GameAudio) {
     variableZoom: false,
     opticName: '',
   };
+
+  function syncModeWorldVisibility(state: GameState) {
+    const showTargets = !getGameModeSpec(state.mode).usesEnemies;
+    if (lastModeTargetsVisible === showTargets) return;
+    lastModeTargetsVisible = showTargets;
+    for (const target of world.targets) {
+      target.setVisible(showTargets);
+    }
+    shadowsStale = true;
+    shadowCooldown = 0;
+  }
 
   function ensureWeaponRig(state: GameState) {
     const spec = activeWeaponSpec(state);
@@ -205,10 +224,41 @@ export function createView(map: GameMap, audio: GameAudio) {
       syncCameraFov();
     },
 
-    resetTargets(state: GameState) {
+    setMap(nextMap: GameMap, state: GameState) {
+      if (nextMap.id === activeMap.id) return;
+      activeMap = nextMap;
+      enemyCrowd.dispose();
+      effects.dispose();
+      world.dispose();
+
+      world = buildWorld(activeMap, renderer);
+      enemyCrowd = createEnemyCrowd(world.scene);
+      effects = createEffects(world.scene);
+      viewmodel.setEnvironment(world.scene.environment);
+      compileScene(world.scene, camera);
+
+      lastModeTargetsVisible = null;
+      lastYaw = activeMap.spawn.yaw;
+      lastPitch = 0;
+      lastPosition.set(activeMap.spawn.position.x, 0, activeMap.spawn.position.z);
+      syncModeWorldVisibility(state);
       state.targetsDown.forEach((down, idx) => {
         world.targets[idx]?.setDown(down);
       });
+      enemyCrowd.sync(state.enemies, animClock);
+      shadowsStale = true;
+      shadowCooldown = 0;
+    },
+
+    resetTargets(state: GameState) {
+      syncModeWorldVisibility(state);
+      state.targetsDown.forEach((down, idx) => {
+        world.targets[idx]?.setDown(down);
+      });
+      effects.clearDecals();
+      enemyCrowd.sync(state.enemies, animClock);
+      flinchPitch = 0;
+      flinchRoll = 0;
       shadowsStale = true;
       shadowCooldown = 0;
     },
@@ -245,6 +295,7 @@ export function createView(map: GameMap, audio: GameAudio) {
     /** React to what happened in one simulation step. */
     handle(events: readonly GameEvent[], state: GameState) {
       const spec = ensureWeaponRig(state);
+      syncModeWorldVisibility(state);
 
       for (const event of events) {
         switch (event.type) {
@@ -255,7 +306,7 @@ export function createView(map: GameMap, audio: GameAudio) {
             });
             audio.shot(shotWeaponId);
 
-            // Paint all pellet/bullet holes & dust, deduplicating simultaneous steel/surface audio.
+            // Paint all pellet/bullet holes & dust, deduplicating simultaneous steel/surface/enemy audio.
             let playedSteel = false;
             let playedSurface = false;
             for (const impact of event.hits) {
@@ -266,13 +317,54 @@ export function createView(map: GameMap, audio: GameAudio) {
                   audio.steel(impact.distance, pan);
                   playedSteel = true;
                 }
-              } else if (!playedSurface) {
+              } else if (impact.surface !== 'enemy' && !playedSurface) {
                 audio.impact(impact.distance, impact.surface, pan);
                 playedSurface = true;
               }
             }
             break;
           }
+          case 'enemy-shot': {
+            const dist = Math.hypot(
+              event.origin.x - camera.position.x,
+              event.origin.y - camera.position.y,
+              event.origin.z - camera.position.z,
+            );
+            audio.enemyShot(dist, panOf(event.origin), event.weaponId);
+            effects.tracer(event.origin, event.endPoint);
+            if (!event.hitPlayer && event.surfaceHitNormal) {
+              effects.impact(event.endPoint, event.surfaceHitNormal, 'concrete');
+            }
+            break;
+          }
+          case 'enemy-hit':
+            audio.enemyHit(event.distance, panOf(event.point), event.zone === 'head');
+            break;
+          case 'enemy-down': {
+            const downed = state.enemies.find((e) => e.id === event.enemyId);
+            const pan = downed ? panOf({ x: downed.position.x, y: 1.2, z: downed.position.z }) : 0;
+            audio.enemyDown(event.distance, pan);
+            shadowsStale = true;
+            break;
+          }
+          case 'player-hit': {
+            rightward.setFromMatrixColumn(camera.matrixWorld, 0);
+            const pan =
+              (event.fromDirection.x * rightward.x + event.fromDirection.z * rightward.z) * 0.85;
+            audio.playerHit(pan, event.healthRemaining <= 30);
+            flinchPitch = Math.min(0.045, flinchPitch + 0.018);
+            flinchRoll = Math.max(-0.04, Math.min(0.04, flinchRoll - pan * 0.024));
+            break;
+          }
+          case 'mode-victory':
+            audio.modeVictory();
+            break;
+          case 'gun-game-advance':
+            audio.tierAdvance();
+            break;
+          case 'player-down':
+            audio.playerDefeat();
+            break;
           case 'zoom-toggle':
             viewmodel.onZoomToggle();
             audio.zoomClick();
@@ -286,6 +378,7 @@ export function createView(map: GameMap, audio: GameAudio) {
             break;
           case 'targets-reset':
             for (const target of world.targets) target.setDown(false);
+            effects.clearDecals();
             break;
           case 'dry-fire':
             audio.dryFire();
@@ -309,11 +402,19 @@ export function createView(map: GameMap, audio: GameAudio) {
     },
 
     /** Slowly drifting vantage camera overlooking the Shoot House for the Title Screen. */
-    renderTitleBackdrop(dt: number, reducedMotion: boolean) {
+    renderTitleBackdrop(dt: number, reducedMotion: boolean, state?: GameState) {
+      animClock += dt;
+      if (state) {
+        syncModeWorldVisibility(state);
+        if (enemyCrowd.sync(state.enemies, animClock)) {
+          shadowsStale = true;
+        }
+      }
       orbitClock += reducedMotion ? dt * 0.08 : dt * 0.22;
-      const swayX = -1.2 + Math.sin(orbitClock) * 3.6;
-      const swayZ = 14.8 + Math.cos(orbitClock * 0.7) * 1.8;
-      const swayY = 3.1 + Math.sin(orbitClock * 0.5) * 0.2;
+      const isCargo = activeMap.id === 'cargo-yard';
+      const swayX = (isCargo ? -2.2 : -1.4) + Math.sin(orbitClock) * 4.2;
+      const swayZ = (isCargo ? 15.8 : 17.2) + Math.cos(orbitClock * 0.7) * 1.4;
+      const swayY = (isCargo ? 3.85 : 2.95) + Math.sin(orbitClock * 0.5) * 0.16;
 
       if (zoom !== 1) {
         zoom = 1;
@@ -330,7 +431,7 @@ export function createView(map: GameMap, audio: GameAudio) {
         opticName: '',
       };
       camera.position.set(swayX, swayY, swayZ);
-      camera.lookAt(swayX * 0.15 + 1.5, 1.45, -4.5);
+      camera.lookAt(swayX * 0.15 + 1.2, 1.45, -4.8);
       camera.updateMatrixWorld();
 
       let anyMoving = false;
@@ -358,7 +459,9 @@ export function createView(map: GameMap, audio: GameAudio) {
       look: { yaw: number; pitch: number },
       draw = true,
     ) {
+      animClock += dt;
       const spec = ensureWeaponRig(state);
+      syncModeWorldVisibility(state);
       const optic = OPTICS[spec.opticId];
 
       const from = previous.player.position;
@@ -380,6 +483,9 @@ export function createView(map: GameMap, audio: GameAudio) {
 
       landVelocity += (-190 * landOffset - 22 * landVelocity) * dt;
       landOffset += landVelocity * dt;
+      const flinchDecay = Math.exp(-13 * dt);
+      flinchPitch *= flinchDecay;
+      flinchRoll *= flinchDecay;
 
       const vx = state.player.velocity.x;
       const vz = state.player.velocity.z;
@@ -394,22 +500,22 @@ export function createView(map: GameMap, audio: GameAudio) {
         -PLAYER_TUNING.maxPitch,
         PLAYER_TUNING.maxPitch,
       );
-      // Project horizontal velocity onto player's right vector for natural strafe banking!
       const strafeSpeed = vx * Math.cos(yaw) - vz * Math.sin(yaw);
 
       const lean = THREE.MathUtils.lerp(previous.player.lean, state.player.lean, alpha);
       const leanAmount = lean / PLAYER_TUNING.leanDistance;
       const eye = eyeAt({ x, y, z }, yaw, lean);
       const camKick = viewmodel.cameraKick();
+      const defeatDrop = state.outcome === 'defeat' ? -0.62 : 0;
+      const defeatRoll = state.outcome === 'defeat' ? 0.24 : 0;
 
-      camera.position.set(eye.x, eye.y + bob + landOffset, eye.z);
+      camera.position.set(eye.x, Math.max(0.45, eye.y + bob + landOffset + defeatDrop), eye.z);
       camera.rotation.set(
-        pitch + state.weapon.recoil + camKick.pitch,
+        pitch + state.weapon.recoil + camKick.pitch + flinchPitch,
         yaw,
-        -leanAmount * LEAN_ROLL + camKick.roll,
+        -leanAmount * LEAN_ROLL + camKick.roll + flinchRoll + defeatRoll,
       );
 
-      // Smoothly interpolate active optic zoom (including variable-zoom toggles on LPVO & PM II!).
       const aim = THREE.MathUtils.lerp(previous.weapon.aim, state.weapon.aim, alpha);
       currentAim = aim;
       const smoothAim = THREE.MathUtils.smoothstep(aim, 0, 1);
@@ -428,12 +534,11 @@ export function createView(map: GameMap, audio: GameAudio) {
         audio.aim(direction > 0);
       }
 
-      // Magnified scope overlays (`acog` 3.5×, `lpvo` 2×/5×, `sniper` 6×/10×) snap cleanly
-      // into view once ADS crosses 72% and hide the 3D viewmodel so zero scope housing clips!
       const overlayStyle = optic.overlay;
       const hasOverlay = overlayStyle !== 'none';
-      const scopeOpacity = hasOverlay ? THREE.MathUtils.smoothstep(aim, 0.72, 0.94) : 0;
-      const hideModelForScope = hasOverlay && aim >= 0.82;
+      const scopeOpacity =
+        hasOverlay && state.outcome !== 'defeat' ? THREE.MathUtils.smoothstep(aim, 0.72, 0.94) : 0;
+      const hideModelForScope = state.outcome === 'defeat' || (hasOverlay && aim >= 0.82);
       const scopedCant = -leanAmount * LEAN_ROLL;
 
       scopeState = {
@@ -473,18 +578,17 @@ export function createView(map: GameMap, audio: GameAudio) {
       sunInView.copy(world.sunDirection).transformDirection(camera.matrixWorldInverse);
       viewmodel.setSun(sunInView);
 
-      let anyTargetMoving = false;
+      let anyActorMoving = enemyCrowd.sync(state.enemies, animClock);
       for (const target of world.targets) {
-        if (target.update(dt)) anyTargetMoving = true;
+        if (target.update(dt)) anyActorMoving = true;
       }
-      if (anyTargetMoving) {
+      if (anyActorMoving) {
         shadowsStale = true;
-      } else if (targetsWereMoving) {
-        // Guarantee a crisp final shadow update the exact frame targets come to rest!
+      } else if (actorsWereMoving) {
         shadowsStale = true;
         shadowCooldown = 0;
       }
-      targetsWereMoving = anyTargetMoving;
+      actorsWereMoving = anyActorMoving;
 
       effects.update(dt);
 

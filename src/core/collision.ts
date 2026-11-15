@@ -29,6 +29,20 @@ export function bodyBox(feet: Vec3, radius: number, height: number): Box {
   };
 }
 
+/** True when an upright body at `feet` overlaps any box in `solids`. */
+export function collidesAt(
+  feet: Vec3,
+  radius: number,
+  height: number,
+  solids: readonly Box[],
+): boolean {
+  const box = bodyBox(feet, radius, height);
+  for (const solid of solids) {
+    if (overlaps(box, solid)) return true;
+  }
+  return false;
+}
+
 export interface MoveResult {
   readonly position: Vec3;
   readonly hitX: boolean;

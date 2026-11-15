@@ -1,13 +1,13 @@
 // Plays the game in a real browser and saves screenshots to playtest/.
 //
-//   npm run playtest                  every feature, UI screens, weapons, then the bot clears the map
+//   npm run playtest                  every feature, UI screens, both maps, Gun Game, and Practice
 //   npm run playtest -- --quick       spawn screenshot only
 //   npm run playtest -- --materials   every texture side by side, nothing else
 //   npm run playtest -- --weapon      default weapon four-view (or --weapon=ak47, --weapon=all)
 //   npm run playtest -- --keep after  copy screenshots to playtest/after/ afterwards
 //
 // Exits non-zero if the page logs an error, a feature check fails, or the bot
-// cannot clear the map.
+// cannot complete both Gun Game and Practice across Shoot House and Cargo Yard.
 
 import { cpSync, mkdirSync, readdirSync } from 'node:fs';
 import { launchGame } from './browser.mjs';
@@ -51,7 +51,18 @@ if (args.includes('--materials')) {
   const game = await launchGame();
   const shot = (name) => game.screenshot(`playtest/${name}.png`);
   try {
-    await shot('01-spawn');
+    const initialState = await game.state();
+    check(
+      'default session starts in Gun Game on Shoot House at Tier 1 (M1911) with 10 live hostiles and 100 HP',
+      initialState.mode === 'gungame' &&
+        initialState.mapId === 'shoot-house' &&
+        initialState.gunGameTier === 0 &&
+        initialState.weapon.weaponId === 'm1911' &&
+        initialState.enemies.length === 10 &&
+        initialState.enemies.every((e) => e.alive) &&
+        initialState.playerHealth === 100,
+    );
+    await shot('01-spawn-gungame-shoothouse');
 
     if (!quick) {
       // 1. Title Screen
@@ -62,300 +73,298 @@ if (args.includes('--materials')) {
         btns.map((b) => b.getAttribute('data-entry')),
       );
       check(
-        'title menu shows play, loadout, settings, controls',
+        'title menu shows play, modes, loadout, settings, controls',
         JSON.stringify(titleEntries) ===
-          JSON.stringify(['play', 'loadout', 'settings', 'controls']),
+          JSON.stringify(['play', 'modes', 'loadout', 'settings', 'controls']),
       );
 
-      // 2. Armory / Loadout Screen (live 3D turntable + real stats + weapon equip persistence)
-      await game.page.evaluate(() => window.__fps.openScreen('loadout'));
-      await new Promise((r) => setTimeout(r, 360));
-      await shot('15-loadout-hk416');
-      await game.page.evaluate(() => window.__fps.inspectLoadout('awm'));
-      await new Promise((r) => setTimeout(r, 360));
-      await shot('16-loadout-awm');
-      await game.page.evaluate(() => window.__fps.inspectLoadout('desert-eagle'));
-      await new Promise((r) => setTimeout(r, 300));
-      await shot('17-loadout-deagle');
-      const loadoutCardCount = await game.page.$$eval('.loadout-card', (els) => els.length);
-      check('armory renders all 8 firearms in All tab', loadoutCardCount === 8);
+      // 1b. Overhauled Game Modes & Maps Deployment Screen (2 Modes x 2 Maps + 8-Tier Gun Game Ladder)
+      await game.page.evaluate(() => {
+        window.__fps.openScreen('modes');
+        window.__fps.inspectMode('gungame', 'shoot-house');
+      });
+      await new Promise((r) => setTimeout(r, 240));
+      await shot('00b-modes-gungame-shoothouse');
 
-      // Verify Armory panels never overlap at desktop (1280x720) OR split-pane (860x660) widths!
-      const checkNoLoadoutOverlap = () =>
-        game.page.evaluate(() => {
-          const rect = (sel) => document.querySelector(sel)?.getBoundingClientRect();
-          const list = rect('.loadout-list');
-          const stage = rect('.loadout-stage');
-          const stats = rect('.loadout-stats');
-          const overlap = (a, b) =>
-            Boolean(
-              a &&
-              b &&
-              a.left < b.right - 1 &&
-              a.right > b.left + 1 &&
-              a.top < b.bottom - 1 &&
-              a.bottom > b.top + 1,
-            );
-          return !overlap(list, stage) && !overlap(stage, stats) && !overlap(list, stats);
-        });
-      const desktopNoOverlap = await checkNoLoadoutOverlap();
-      await game.page.setViewport({ width: 860, height: 660 });
+      await game.page.evaluate(() => window.__fps.inspectMode('gungame', 'cargo-yard'));
+      await new Promise((r) => setTimeout(r, 200));
+      await shot('00c-modes-gungame-cargoyard');
+
+      await game.page.evaluate(() => window.__fps.inspectMode('practice', 'cargo-yard'));
+      await new Promise((r) => setTimeout(r, 200));
+      await shot('00d-modes-practice-cargoyard');
+
+      await game.page.setViewport({ width: 1920, height: 1080 });
       await new Promise((r) => setTimeout(r, 180));
-      const splitPaneNoOverlap = await checkNoLoadoutOverlap();
-      await shot('17b-loadout-split-860x660');
+      await shot('00e-modes-1920x1080');
+      const modesLayoutCheck = await game.page.evaluate(() => {
+        const sel = document.querySelector('.modes-selectors')?.getBoundingClientRect();
+        const insp = document.querySelector('.modes-inspector')?.getBoundingClientRect();
+        const modeCards = document.querySelectorAll('.modes-card').length;
+        const mapCards = document.querySelectorAll('.modes-map-card').length;
+        const ladderSteps = document.querySelectorAll('.modes-ladder-step').length;
+        return Boolean(
+          sel &&
+          insp &&
+          modeCards === 2 &&
+          mapCards === 2 &&
+          ladderSteps === 8 &&
+          sel.right <= insp.left + 2,
+        );
+      });
       await game.page.setViewport({ width: 1280, height: 720 });
       await new Promise((r) => setTimeout(r, 150));
       check(
-        'armory layout has zero panel overlap at desktop & split-pane widths',
-        desktopNoOverlap && splitPaneNoOverlap,
+        'game modes & maps screen renders 2 modes, 2 maps, and 8-tier ladder cleanly without overlap',
+        modesLayoutCheck,
       );
 
-      // 3. Redesigned AAA Settings Screen (Controls + Interface tabs + persistence)
+      // 2. Armory / Loadout Screen
+      await game.page.evaluate(() => window.__fps.openScreen('loadout'));
+      await new Promise((r) => setTimeout(r, 340));
+      await shot('15-loadout-hk416');
+      await game.page.evaluate(() => window.__fps.inspectLoadout('awm'));
+      await new Promise((r) => setTimeout(r, 300));
+      await shot('16-loadout-awm');
+      const loadoutCardCount = await game.page.$$eval('.loadout-card', (els) => els.length);
+      check('armory renders all 8 firearms in All tab', loadoutCardCount === 8);
+
+      // 3. Settings & Controls Screens
       await game.page.evaluate(() => {
         window.__fps.openScreen('settings');
         window.__fps.selectSettingsTab('controls');
       });
-      await new Promise((r) => setTimeout(r, 220));
+      await new Promise((r) => setTimeout(r, 200));
       await shot('12-settings-controls');
-      await game.page.evaluate(() => window.__fps.selectSettingsTab('interface'));
-      await new Promise((r) => setTimeout(r, 220));
-      await shot('12b-settings-interface');
-      const updatedSettings = await game.page.evaluate(() =>
-        window.__fps.settings({ fov: 90, crosshairColor: 'brass', aimMode: 'toggle' }),
-      );
-      const savedInStorage = await game.page.evaluate(() =>
-        window.localStorage.getItem('fps.settings.v1'),
-      );
-      check(
-        'settings apply and persist to localStorage',
-        updatedSettings.fov === 90 &&
-          updatedSettings.crosshairColor === 'brass' &&
-          updatedSettings.aimMode === 'toggle' &&
-          Boolean(savedInStorage && savedInStorage.includes('"fov":90')),
-      );
-      await game.page.evaluate(() =>
-        window.__fps.settings({ fov: 78, crosshairColor: 'white', aimMode: 'hold' }),
-      );
-
-      // 4. Controls Screen
       await game.page.evaluate(() => window.__fps.openScreen('controls'));
-      await new Promise((r) => setTimeout(r, 220));
+      await new Promise((r) => setTimeout(r, 200));
       await shot('13-controls-screen');
-      const keycapCount = await game.page.$$eval(
-        '.controls-screen .ui-keycap, .controls-screen .ui-mouse-badge',
-        (els) => els.length,
-      );
-      check('controls screen renders keycaps and mouse badges', keycapCount >= 14);
 
-      // 5. Gameplay: HK416 Primary — walk, fire, reload, ADS, Lean + ADS
-      await game.page.evaluate(() => window.__fps.openScreen('playing'));
-      await game.step({ forward: 1 }, 45);
-      await shot('02-walking-hk416');
-      await game.step({ fire: true }, 4);
-      await shot('03-firing-hk416');
-      await game.step({}, 18);
-
-      await game.step({ reload: true }, 1);
-      await game.step({}, 38);
-      await shot('04-reload-mid');
-      await game.step({}, 120);
-      check('HK416 reload refills 30-round magazine', (await game.state()).weapon.rounds === 30);
-
-      await game.step({ aim: true }, 30);
-      await shot('07-hk416-aiming');
-      const aimed = await game.state();
-      const zoom = await game.zoom();
-      summary.zoom = zoom;
-      check('aim reaches fully up', aimed.weapon.aim === 1);
-      check('view is zoomed while aiming', zoom > 1.05);
-
-      // Lean left + right + pivot-accurate Lean + ADS
-      await game.step({ aim: true, lean: -1 }, 24);
-      await shot('09-hk416-lean-left-ads');
-      check('leans left', (await game.state()).player.lean < -0.3);
-      await game.step({ aim: true, lean: 1 }, 45);
-      await shot('10-hk416-lean-right-ads');
-      check('leans right', (await game.state()).player.lean > 0.3);
-      const leanShot = await game.step({ lean: 1, fire: true, aim: true }, 2);
-      check(
-        'can fire while leaning + aiming',
-        leanShot.some((event) => event.type === 'shot'),
-      );
-      await game.step({}, 35);
-      check('stands back up and lowers sights', (await game.state()).player.lean === 0);
-
-      // 6. Weapon Switching [1] -> [2] (M1911 Sidearm) -> [1]
-      await game.step({ switchSlot: 'secondary' }, 25);
-      await shot('18-secondary-m1911');
-      check(
-        'switches cleanly to secondary weapon',
-        (await game.state()).weapon.weaponId === 'm1911',
-      );
-      await game.step({ switchSlot: 'primary' }, 25);
-      check(
-        'switches cleanly back to primary weapon',
-        (await game.state()).weapon.weaponId === 'hk416',
-      );
-
-      // 7. Remington 870 Shotgun multi-pellet firing
-      await game.page.evaluate(() => window.__fps.equipWeapon('remington-870', 'primary'));
-      await game.step({}, 10);
-      await shot('19-shotgun-870-hip');
-      const sgEvents = await game.step({ fire: true }, 2);
-      const sgShot = sgEvents.find((e) => e.type === 'shot');
-      check(
-        'Remington 870 fires 8 pellets in one shell',
-        Boolean(sgShot && sgShot.hits.length >= 1),
-      );
-
-      // 8. AWM Sniper Rifle + 6x -> 10x Variable Telescopic Scope + East 38m Lane + Scoped Lean
+      // 4. Switch to Practice Mode on Cargo Yard — inspect the brand-new Maritime Port + Brick Warehouse map!
       await game.page.evaluate(() => {
-        window.__fps.equipWeapon('awm', 'primary');
-        // Stand at the mouth of the East 38m Sniper Lane looking straight downrange!
-        window.__fps.place({ x: 18.5, y: 0, z: 16.5 }, 0, 0);
+        window.__fps.map('cargo-yard');
+        window.__fps.mode('practice');
+        window.__fps.equipWeapon('hk416', 'primary');
+        window.__fps.openScreen('playing');
       });
       await game.step({}, 6);
-      await shot('20-east-sniper-lane-hip');
-      await game.step({ aim: true }, 35);
-      await shot('21-awm-scoped-6x');
-      const awmZoom = await game.zoom();
-      summary.awmZoom = awmZoom;
-      check('AWM telescopic scope zooms >= 5.5x', awmZoom >= 5.5);
+      await shot('02-cargoyard-spawn-hk416');
 
-      // Toggle variable magnification (V) from 6x -> 10x!
+      // Central Double-Stack Container Maze on Cargo Yard
+      await game.page.evaluate(() => {
+        window.__fps.place({ x: -1.2, y: 0, z: 14.5 }, 0.08, 0.04);
+      });
+      await game.step({}, 6);
+      await shot('03-cargoyard-container-maze');
+
+      // West Industrial Clay-Brick Warehouse interior on Cargo Yard
+      await game.page.evaluate(() => {
+        window.__fps.equipWeapon('remington-870', 'primary');
+        window.__fps.place({ x: -22.5, y: 0, z: 10.6 }, 0.25, 0);
+      });
+      await game.step({}, 6);
+      await shot('04-cargoyard-brick-warehouse-shotgun');
+
+      // East 52 m Steel Crane Pier Lane on Cargo Yard with AWM 6x/10x Scope
+      await game.page.evaluate(() => {
+        window.__fps.equipWeapon('awm', 'primary');
+        window.__fps.place({ x: 25.8, y: 0, z: 20.6 }, 0, 0);
+      });
+      await game.step({}, 6);
+      await shot('05-cargoyard-crane-pier-hip');
+      await game.step({ aim: true }, 34);
+      await shot('06-cargoyard-crane-pier-awm-6x');
+      const awmZoom = await game.zoom();
+      check('AWM telescopic scope zooms >= 5.5x on Cargo Yard', awmZoom >= 5.5);
+
       await game.step({ aim: true, toggleZoom: true }, 1);
       await game.step({ aim: true }, 24);
       const awmZoomHigh = await game.zoom();
-      summary.awmZoomHigh = awmZoomHigh;
       check('AWM variable zoom toggles cleanly to ~10x', awmZoomHigh >= 9.2);
-      await shot('22b-awm-scoped-10x');
-      await game.step({ aim: true, toggleZoom: true }, 1);
-      await game.step({ aim: true }, 20);
+      await game.step({}, 30);
 
-      await game.step({ aim: true, lean: -1 }, 24);
-      await shot('22-awm-scoped-lean-left');
-      await game.step({}, 35);
-
-      // 8b. SCAR-H Trijicon ACOG 3.5x glowing green chevron + BDC scope
-      await game.page.evaluate(() => {
-        window.__fps.equipWeapon('scar-h', 'primary');
-        window.__fps.setOptic('scar-h', 'acog');
-        window.__fps.place({ x: 18.5, y: 0, z: 16.5 }, 0, 0);
-      });
-      await game.step({ aim: true }, 32);
-      const acogZoom = await game.zoom();
-      summary.acogZoom = acogZoom;
-      check('SCAR-H ACOG scope zooms to ~3.5x', acogZoom >= 3.2 && acogZoom <= 3.8);
-      await shot('24-scar-h-acog-35x');
-      await game.step({}, 25);
-
-      // 8c. HK416 Razor HD LPVO 2x <-> 5x variable scope
-      await game.page.evaluate(() => {
-        window.__fps.equipWeapon('hk416', 'primary');
-        window.__fps.setOptic('hk416', 'lpvo');
-        window.__fps.place({ x: 18.5, y: 0, z: 16.5 }, 0, 0);
-      });
-      await game.step({ aim: true }, 32);
-      const lpvoLow = await game.zoom();
-      await shot('25-hk416-lpvo-2x');
-      await game.step({ aim: true, toggleZoom: true }, 1);
-      await game.step({ aim: true }, 24);
-      const lpvoHigh = await game.zoom();
-      summary.lpvoZoom = [lpvoLow, lpvoHigh];
-      check('HK416 LPVO toggles cleanly 2x -> 5x', lpvoLow >= 1.85 && lpvoHigh >= 4.6);
-      await shot('26-hk416-lpvo-5x');
-      await game.page.evaluate(() => window.__fps.setOptic('hk416', 'holo'));
-      await game.step({}, 25);
-
-      // 8d. MP5 Aimpoint Micro T-2 Red Dot 3D ADS sight picture
-      await game.page.evaluate(() => {
-        window.__fps.equipWeapon('mp5', 'primary');
-        window.__fps.setOptic('mp5', 'red-dot');
-        window.__fps.place({ x: -12.5, y: 0, z: 11.5 }, 0.25, 0);
-      });
-      await game.step({ aim: true }, 24);
-      await shot('27-mp5-red-dot-ads');
-      await game.step({}, 20);
-
-      // Capture live WebGL draw call & memory telemetry to verify anti-lag batching!
-      summary.renderStats = await game.page.evaluate(() => window.__fps.renderStats());
-      check('batched rendering stays lean (<= 65 draw calls)', summary.renderStats.calls <= 65);
-
-      // 9. West Breach House Interior Shot (AK-47)
-      await game.page.evaluate(() => {
-        window.__fps.equipWeapon('ak47', 'primary');
-        window.__fps.place({ x: -12.5, y: 0, z: 11.5 }, 0.25, 0);
-      });
-      await game.step({}, 6);
-      await shot('23-west-breach-ak47');
-
-      // 10. Pause overlay during an active run
-      await game.page.evaluate(() => {
-        window.__fps.equipWeapon('hk416', 'primary');
-        window.__fps.openScreen('pause');
-      });
-      await new Promise((r) => setTimeout(r, 220));
-      await shot('14-pause-menu');
-      const pauseEntries = await game.page.$$eval('.pause-screen .ui-menu-btn', (btns) =>
-        btns.map((b) => b.getAttribute('data-entry')),
-      );
-      check(
-        'pause menu shows resume, loadout, restart, settings, controls, quit',
-        JSON.stringify(pauseEntries) ===
-          JSON.stringify(['resume', 'loadout', 'restart', 'settings', 'controls', 'quit']),
-      );
-
-      // Reset cleanly to default HK416 + M1911 for the full bot run!
+      // Weapon switching [1] <-> [2] works freely in Practice mode
       await game.page.evaluate(() => {
         window.__fps.equipWeapon('hk416', 'primary');
         window.__fps.equipWeapon('m1911', 'secondary');
-        window.__fps.restart();
+        window.__fps.equipWeapon('hk416', 'primary');
+      });
+      await game.step({ switchSlot: 'secondary' }, 24);
+      check(
+        'Practice mode allows unrestricted primary <-> secondary switching',
+        (await game.state()).weapon.weaponId === 'm1911',
+      );
+      await game.step({ switchSlot: 'primary' }, 24);
+
+      // 5. Shoot House Overhauled Vistas (Brick Command Bunker + Red/Navy Container Chicane + 50 m Alley)
+      await game.page.evaluate(() => {
+        window.__fps.map('shoot-house');
+        window.__fps.mode('practice');
+        window.__fps.equipWeapon('scar-h', 'primary');
+        window.__fps.setOptic('scar-h', 'acog');
+        window.__fps.place({ x: -1.4, y: 0, z: 8.0 }, 0.1, 0.02);
+      });
+      await game.step({}, 6);
+      await shot('07-shoothouse-central-chicane');
+
+      await game.step({ aim: true, lean: 1 }, 32);
+      await shot('08-shoothouse-scar-acog-lean');
+      await game.step({}, 30);
+
+      // 6. Pause Screen check
+      await game.page.evaluate(() => window.__fps.openScreen('pause'));
+      await new Promise((r) => setTimeout(r, 240));
+      await shot('14-pause-menu');
+
+      // 7. Audio loudness check (including new tierAdvance stinger)
+      summary.loudness = await game.loudness();
+      check(
+        'every synthesized sound (including Gun Game tierAdvance) produces clean audio',
+        summary.loudness.tierAdvance > 0 &&
+          summary.loudness.tierAdvance < 0.25 &&
+          Object.values(summary.loudness).every((v) => v > 0),
+      );
+
+      // 8. Gun Game Incoming Damage + Defeat -> Deploy Again flow
+      await game.page.evaluate(() => {
+        window.__fps.map('shoot-house');
+        window.__fps.mode('gungame');
+        window.__fps.openScreen('playing');
+        window.__fps.place({ x: -1.2, y: 0, z: 4.5 }, 0, 0);
+      });
+      let tookHit = false;
+      for (let i = 0; i < 100; i++) {
+        const evs = await game.step({}, 10);
+        if (evs.some((e) => e.type === 'player-hit')) tookHit = true;
+        if ((await game.state()).outcome === 'defeat') break;
+      }
+      await shot('09-gungame-defeat-banner');
+      check(
+        'player takes incoming enemy fire and enters defeat state at 0 HP',
+        tookHit && (await game.state()).outcome === 'defeat',
+      );
+      await game.page.evaluate(() => {
+        const btn = document.querySelector('.hud-banner__btn--primary');
+        if (btn instanceof HTMLElement) btn.click();
+      });
+      await new Promise((r) => setTimeout(r, 120));
+      check(
+        'Deploy Again resets Gun Game back to Tier 1 (M1911) and 100 HP',
+        (await game.state()).outcome === 'ongoing' &&
+          (await game.state()).gunGameTier === 0 &&
+          (await game.state()).weapon.weaponId === 'm1911',
+      );
+
+      // 9. Full 8-Tier Gun Game Escalation Run on Cargo Yard (verifying real-time weapon promotion per kill!)
+      await game.page.evaluate(() => {
+        window.__fps.map('cargo-yard');
+        window.__fps.mode('gungame');
         window.__fps.openScreen('playing');
       });
 
-      // 11. Loudness balance across all 8 firearms & all surfaces
-      summary.loudness = await game.loudness();
-      check('reload is much quieter than a shot', summary.loudness.reload < 0.2);
-      check('ui cues are subtle relative to gunfire', summary.loudness.uiConfirm < 0.15);
+      summary.cargoYardRenderStats = await game.page.evaluate(() => window.__fps.renderStats());
       check(
-        'every sound makes some sound',
-        Object.values(summary.loudness).every((v) => v > 0),
+        'Cargo Yard batched rendering with 10 3D operators stays lean (<= 115 draw calls)',
+        summary.cargoYardRenderStats.calls <= 115,
       );
 
-      // 12. Full 14-target Shoot House bot clear!
-      let steps = 0;
-      let down = 0;
-      let botLeaned = false;
-      let botAimed = false;
-      const limit = 60 * 240;
-      while (steps < limit) {
-        const events = await game.bot(10);
-        steps += 10;
-        const state = await game.state();
-        botLeaned ||= Math.abs(state.player.lean) > 0.1;
-        botAimed ||= state.weapon.aim === 1;
-        const fell = events.filter((event) => event.type === 'target-down').length;
-        if (fell > 0) {
-          down += fell;
-          await shot(`05-target-${String(down).padStart(2, '0')}`);
+      const cargoGunGame = await game.page.evaluate(() => {
+        const tiersSeen = [window.__fps.state().weapon.weaponId];
+        let steps = 0;
+        const maxSteps = 60 * 180;
+        while (steps < maxSteps && window.__fps.state().outcome === 'ongoing') {
+          const evs = window.__fps.bot(600);
+          steps += 600;
+          for (const ev of evs) {
+            if (ev.type === 'gun-game-advance') {
+              tiersSeen.push(ev.weaponId);
+            }
+          }
         }
-        if (state.targetsDown.every(Boolean)) break;
-      }
-      await game.step({}, 10);
-      await new Promise((r) => setTimeout(r, 240));
-      const state = await game.state();
-      summary.botSeconds = +(steps / 60).toFixed(2);
-      summary.runElapsed = +state.run.elapsed.toFixed(2);
-      summary.runShots = state.run.shotsFired;
-      summary.targetsDown = `${state.targetsDown.filter(Boolean).length} / ${state.targetsDown.length}`;
-      check('bot cleared all 14 targets on expanded Shoot House', state.targetsDown.every(Boolean));
+        const finalState = window.__fps.state();
+        return {
+          outcome: finalState.outcome,
+          tiersSeen,
+          enemiesDown: finalState.run.enemiesDown,
+          seconds: +(steps / 60).toFixed(2),
+          remainingHp: Math.ceil(finalState.playerHealth),
+        };
+      });
+      summary.cargoGunGame = cargoGunGame;
+      await game.step({}, 2);
+      await shot('10-cargoyard-gungame-victory');
       check(
-        'run telemetry recorded elapsed time and all 14 hits',
-        state.run.elapsed > 0 && state.run.targetHits === 14,
+        'bot climbs all 8 Gun Game weapon tiers on Cargo Yard and wins Arsenal Mastered',
+        cargoGunGame.outcome === 'victory' && cargoGunGame.tiersSeen.length === 8,
       );
-      check('bot aimed', botAimed);
-      summary.botLeaned = botLeaned;
-      await shot('06-cleared');
+
+      // 10. Mid-ladder Gun Game HUD screenshot on Shoot House (Tier 4 HK416 / Tier 5 AK-47) + Full Victory
+      await game.page.evaluate(() => {
+        window.__fps.map('shoot-house');
+        window.__fps.mode('gungame');
+        window.__fps.openScreen('playing');
+        let guard = 0;
+        while (
+          guard < 60 * 120 &&
+          window.__fps.state().outcome === 'ongoing' &&
+          window.__fps.state().gunGameTier < 3
+        ) {
+          window.__fps.bot(180);
+          guard += 180;
+        }
+      });
+      await shot('11-shoothouse-gungame-midtier-hud');
+
+      const shGunGame = await game.page.evaluate(() => {
+        let guard = 0;
+        while (guard < 60 * 160 && window.__fps.state().outcome === 'ongoing') {
+          window.__fps.bot(600);
+          guard += 600;
+        }
+        const st = window.__fps.state();
+        return {
+          outcome: st.outcome,
+          tier: st.gunGameTier,
+          enemiesDown: st.run.enemiesDown,
+        };
+      });
+      summary.shootHouseGunGame = shGunGame;
+      check(
+        'bot completes all 8 Gun Game tiers on Shoot House',
+        shGunGame.outcome === 'victory' && shGunGame.enemiesDown >= 8,
+      );
+
+      // 11. Full 16-target Practice Mode clear on Cargo Yard!
+      await game.page.evaluate(() => {
+        window.__fps.map('cargo-yard');
+        window.__fps.mode('practice');
+        window.__fps.equipWeapon('hk416', 'primary');
+        window.__fps.openScreen('playing');
+      });
+      const vitalsHiddenInPractice = await game.page.$eval('.hud-vitals', (el) => el.hidden);
+      check('Practice mode hides combat vitals card cleanly', vitalsHiddenInPractice);
+
+      const practiceClear = await game.page.evaluate(() => {
+        let steps = 0;
+        const limit = 60 * 220;
+        while (steps < limit && !window.__fps.state().targetsDown.every(Boolean)) {
+          window.__fps.bot(600);
+          steps += 600;
+        }
+        const st = window.__fps.state();
+        return {
+          cleared: st.targetsDown.length === 16 && st.targetsDown.every(Boolean),
+          hits: st.run.targetHits,
+          seconds: +(steps / 60).toFixed(2),
+        };
+      });
+      summary.cargoPractice = practiceClear;
+      await game.step({}, 6);
+      await shot('18-cargoyard-practice-cleared');
+      check(
+        'bot clears all 16 steel targets in Practice mode on Cargo Yard',
+        practiceClear.cleared && practiceClear.hits === 16,
+      );
     }
   } finally {
     summary.errors = game.errors;

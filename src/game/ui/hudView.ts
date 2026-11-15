@@ -1,5 +1,7 @@
 import type { GameState } from '../../core/game';
 import { activeWeaponSpec, runAccuracyPercent, TARGET } from '../../core/game';
+import { getMapById } from '../../core/maps';
+import { getGameModeSpec, GUN_GAME_LADDER } from '../../core/modes';
 import { PLAYER_TUNING } from '../../core/player';
 import type { OpticId, ScopeOverlayKind, WeaponId, WeaponSlot } from '../../core/weapon';
 import { getWeaponSpec, OPTICS } from '../../core/weapon';
@@ -10,11 +12,12 @@ import { createKeycap } from './keycaps';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const HIT_DURATION = 0.2;
-const KILL_DURATION = 0.23;
+const KILL_DURATION = 0.24;
 const FEED_LIFETIME = 3.2;
 const FEED_MAX_ITEMS = 4;
 const TICK_POP_SECONDS = 0.14;
 const DRY_FIRE_SECONDS = 0.18;
+const DIR_ARC_SECONDS = 0.72;
 
 const FIRE_MODE_SHORT: Record<string, string> = {
   auto: 'AUTO',
@@ -32,6 +35,11 @@ export interface HudFrameInput {
   readonly showTacticalFeed: boolean;
 }
 
+export interface HudActions {
+  readonly onRestartRun: () => void;
+  readonly onQuitToTitle: () => void;
+}
+
 interface FeedEntry {
   readonly element: HTMLElement;
   age: number;
@@ -47,12 +55,6 @@ function svgEl<K extends keyof SVGElementTagNameMap>(
   return node;
 }
 
-/**
- * Multi-optic magnified scope overlay supporting three authentic real-world reticles:
- *  - `acog`   (Trijicon TA31 3.5×): glowing green tritium chevron apex + BDC drop stadia
- *  - `lpvo`   (Razor HD 2× / 5×): thin bezel, illuminated red-amber horseshoe + 0.5 MOA dot + windage
- *  - `sniper` (PM II 6× / 10× FFP): heavy duplex stadia + Mil-Dot holdover grid + center dot
- */
 function buildScopeOverlay(): {
   root: HTMLElement;
   reticleSvg: SVGSVGElement;
@@ -69,7 +71,7 @@ function buildScopeOverlay(): {
   reticleSvg.setAttribute('class', 'hud-scope__reticle');
   reticleSvg.setAttribute('aria-hidden', 'true');
 
-  // --- 1. ACOG TA31 3.5× (Glowing Green Chevron + BDC Stadia Ladder) ---
+  // --- 1. ACOG TA31 3.5× ---
   const acogGroup = svgEl('g', { class: 'hud-scope__group' });
   acogGroup.append(
     svgEl('circle', {
@@ -88,25 +90,21 @@ function buildScopeOverlay(): {
       stroke: 'rgba(120, 235, 160, 0.16)',
       'stroke-width': '2',
     }),
-    // Outer black horizontal framing stadia bars.
     svgEl('path', {
       d: 'M 75 500 H 335 M 665 500 H 925 M 500 725 V 925',
       stroke: '#0a0e13',
       'stroke-width': '4.2',
     }),
-    // Fine vertical BDC spine below the chevron apex (500, 500 is exact point of aim!).
     svgEl('path', {
       d: 'M 500 532 V 725 M 472 560 H 528 M 480 605 H 520 M 485 650 H 515 M 490 695 H 510',
       stroke: 'rgba(12, 16, 22, 0.92)',
       'stroke-width': '2.2',
     }),
-    // Fine horizontal windage subtensions.
     svgEl('path', {
       d: 'M 385 492 V 508 M 425 494 V 506 M 575 494 V 506 M 615 492 V 508',
       stroke: 'rgba(12, 16, 22, 0.85)',
       'stroke-width': '2',
     }),
-    // Iconic Trijicon glowing green tritium chevron (tip dead-centre at (500, 500)!).
     svgEl('path', {
       d: 'M 476 524 L 500 500 L 524 524',
       fill: 'none',
@@ -123,7 +121,7 @@ function buildScopeOverlay(): {
     }),
   );
 
-  // --- 2. Razor HD LPVO 2× / 5× (Ultra-thin Bezel + Illuminated Horseshoe & BDC) ---
+  // --- 2. Razor HD LPVO 2× / 5× ---
   const lpvoGroup = svgEl('g', { class: 'hud-scope__group' });
   const lpvoTicks: string[] = [];
   for (let i = 1; i <= 4; i++) {
@@ -148,7 +146,6 @@ function buildScopeOverlay(): {
       stroke: 'rgba(235, 185, 110, 0.16)',
       'stroke-width': '1.8',
     }),
-    // Slim clean JM-1 / MRAD tactical crosshair.
     svgEl('path', {
       d: 'M 42 500 H 460 M 540 500 H 958 M 500 540 V 958 M 500 180 V 456',
       stroke: 'rgba(12, 16, 22, 0.88)',
@@ -159,7 +156,6 @@ function buildScopeOverlay(): {
       stroke: 'rgba(14, 18, 24, 0.88)',
       'stroke-width': '2',
     }),
-    // Illuminated amber-red CQB horseshoe ring (open bottom at 6 o'clock for BDC sightline).
     svgEl('path', {
       d: 'M 476 530 A 38 38 0 1 1 524 530',
       fill: 'none',
@@ -167,7 +163,6 @@ function buildScopeOverlay(): {
       'stroke-width': '4.4',
       'stroke-linecap': 'round',
     }),
-    // Crisp central illuminated micro-dot dead-centre at (500, 500).
     svgEl('circle', {
       cx: '500',
       cy: '500',
@@ -176,7 +171,7 @@ function buildScopeOverlay(): {
     }),
   );
 
-  // --- 3. PM II Sniper Scope 6× / 10× FFP Mil-Dot ---
+  // --- 3. PM II Sniper Scope 6× / 10× FFP ---
   const sniperGroup = svgEl('g', { class: 'hud-scope__group' });
   const sniperTicks: string[] = [];
   for (let i = 1; i <= 5; i++) {
@@ -252,24 +247,43 @@ function buildScopeOverlay(): {
   return { root, reticleSvg, zoomTag, zoomHint, setStyle };
 }
 
-export function createHudView(container: HTMLElement, totalTargets: number) {
+export function createHudView(container: HTMLElement, initialTargets: number, actions: HudActions) {
   const layer = el('div', 'hud-layer');
   layer.dataset.visible = 'true';
 
-  // 0. Multi-Optic Magnified Scope Overlay (ACOG 3.5× / Razor LPVO 2–5× / PM II 6–10×)
+  // 0. Incoming Damage Vignette + Directional Hit Arc
+  const damageVignette = el('div', 'hud-damage-vignette');
+  const damageArc = document.createElementNS(SVG_NS, 'svg');
+  damageArc.setAttribute('viewBox', '0 0 240 240');
+  damageArc.setAttribute('class', 'hud-damage-arc');
+  damageArc.setAttribute('aria-hidden', 'true');
+  damageArc.append(
+    svgEl('path', {
+      d: 'M 84 26 A 98 98 0 0 1 156 26',
+      fill: 'none',
+      stroke: '#e5534b',
+      'stroke-width': '5.5',
+      'stroke-linecap': 'round',
+    }),
+    svgEl('path', {
+      d: 'M 120 12 L 112 24 H 128 Z',
+      fill: '#ff7a70',
+    }),
+  );
+
   const scope = buildScopeOverlay();
 
-  // 1. Top Objective Tracker (Targets Down, adaptive N-segment bar, live Run Timer)
+  // 1. Top Objective Tracker (Dynamic Hostiles or Targets Down, adaptive N-segment bar, live Run Timer)
   const objective = el('section', 'hud-plate hud-objective');
-  objective.setAttribute('aria-label', 'Course progress');
+  objective.setAttribute('aria-label', 'Mission progress');
   const objectiveTop = el('div', 'hud-objective__top');
 
   const targetGroup = el('div', 'hud-objective__group');
-  const targetLabel = el('span', 'hud-objective__label', 'Targets');
+  const targetLabel = el('span', 'hud-objective__label', 'Hostiles');
   const targetCountWrap = el('span', 'hud-objective__count');
   const targetDownNum = el('span', undefined, '0');
   const targetSep = el('span', 'hud-objective__count-sep', ' / ');
-  const targetTotalNum = el('span', 'hud-objective__count-total', String(totalTargets));
+  const targetTotalNum = el('span', 'hud-objective__count-total', String(initialTargets));
   targetCountWrap.append(targetDownNum, targetSep, targetTotalNum);
   targetGroup.append(targetLabel, targetCountWrap);
 
@@ -281,16 +295,49 @@ export function createHudView(container: HTMLElement, totalTargets: number) {
   objectiveTop.append(targetGroup, timerGroup);
 
   const segmentBar = el('div', 'hud-objective__segments');
-  segmentBar.style.gridTemplateColumns = `repeat(${Math.max(1, totalTargets)}, 1fr)`;
-  const segments = Array.from({ length: totalTargets }, () => {
-    const seg = el('span', 'hud-segment');
-    seg.dataset.down = 'false';
-    segmentBar.append(seg);
-    return seg;
-  });
-  objective.append(objectiveTop, segmentBar);
+  let segments: HTMLElement[] = [];
 
-  // 2. Dynamic Crosshair (center dot + 4 dynamic arms)
+  function rebuildSegments(count: number) {
+    const safeCount = Math.max(1, count);
+    segmentBar.style.gridTemplateColumns = `repeat(${safeCount}, 1fr)`;
+    segmentBar.replaceChildren();
+    segments = Array.from({ length: safeCount }, () => {
+      const seg = el('span', 'hud-segment');
+      seg.dataset.down = 'false';
+      segmentBar.append(seg);
+      return seg;
+    });
+    targetTotalNum.textContent = String(count);
+  }
+  rebuildSegments(initialTargets);
+  const nextGunRow = el('div', 'hud-objective__next');
+  nextGunRow.hidden = true;
+  objective.append(objectiveTop, segmentBar, nextGunRow);
+
+  // 2. Bottom-Left Operator Vitals Card (Active in Combat Modes)
+  const vitalsPanel = el('section', 'hud-plate hud-vitals');
+  vitalsPanel.setAttribute('aria-label', 'Operator health');
+  vitalsPanel.dataset.state = 'healthy';
+  const vitalsTop = el('div', 'hud-vitals__top');
+  const vitalsLeft = el('div', 'hud-vitals__title');
+  vitalsLeft.append(createIcon('shield', 'hud-vitals__icon'), el('span', undefined, 'Operator HP'));
+  const vitalsNumWrap = el('div', 'hud-vitals__num-wrap');
+  const vitalsCurrent = el('span', 'hud-vitals__num', '100');
+  const vitalsMax = el('span', 'hud-vitals__max', '/ 100');
+  vitalsNumWrap.append(vitalsCurrent, vitalsMax);
+  vitalsTop.append(vitalsLeft, vitalsNumWrap);
+
+  const vitalsBar = el('div', 'hud-vitals__bar');
+  const VITALS_SEGS = 10;
+  const vitalsSegs = Array.from({ length: VITALS_SEGS }, () => {
+    const s = el('span', 'hud-vitals__seg');
+    s.dataset.filled = 'true';
+    vitalsBar.append(s);
+    return s;
+  });
+  vitalsPanel.append(vitalsTop, vitalsBar);
+
+  // 3. Dynamic Crosshair
   const crosshair = el('div', 'hud-crosshair');
   const crosshairDot = el('span', 'hud-crosshair__dot');
   const armTop = el('span', 'hud-crosshair__arm hud-crosshair__arm--top');
@@ -299,7 +346,7 @@ export function createHudView(container: HTMLElement, totalTargets: number) {
   const armRight = el('span', 'hud-crosshair__arm hud-crosshair__arm--right');
   crosshair.append(crosshairDot, armTop, armBottom, armLeft, armRight);
 
-  // 3. Sharp Hit / Target-Down Marker (<230ms)
+  // 4. Sharp Hit / Neutralized Marker
   const hitMarker = document.createElementNS(SVG_NS, 'svg');
   hitMarker.setAttribute('viewBox', '0 0 34 34');
   hitMarker.setAttribute('class', 'hud-hit-marker');
@@ -312,14 +359,14 @@ export function createHudView(container: HTMLElement, totalTargets: number) {
   hitKill.setAttribute('class', 'hud-hit-marker__kill');
   hitMarker.append(hitBase, hitKill);
 
-  // 4. Contextual Reload Prompt ([R] Reload)
+  // 5. Contextual Reload Prompt
   const reloadPrompt = el('div', 'hud-reload-prompt');
   reloadPrompt.dataset.state = 'hidden';
   const reloadPromptKey = createKeycap('R');
   const reloadPromptText = el('span', 'hud-reload-prompt__text', 'Reload');
   reloadPrompt.append(reloadPromptKey, reloadPromptText);
 
-  // 5. Quiet Stance Indicators (Lean Left, Lean Right, Sprint)
+  // 6. Quiet Stance Indicators
   const stanceWrap = el('div', 'hud-stance');
   const leanLeftPill = el('div', 'hud-stance__pill');
   leanLeftPill.append(createIcon('leanLeft'), el('span', undefined, 'Lean L'));
@@ -329,11 +376,11 @@ export function createHudView(container: HTMLElement, totalTargets: number) {
   sprintPill.append(createIcon('sprint'), el('span', undefined, 'Sprint'));
   stanceWrap.append(leanLeftPill, leanRightPill, sprintPill);
 
-  // 6. Bottom-Right Weapon & Ammo Cluster (Slot Switcher Strip + Dynamic Weapon Plate)
+  // 7. Bottom-Right Weapon & Ammo Cluster
   const weaponCluster = el('div', 'hud-weapon-cluster');
-
-  // Compact [1] Primary / [2] Secondary carry indicator strip
   const slotStrip = el('div', 'hud-slots');
+  const gunGameNextBadge = el('div', 'hud-gg-next');
+  gunGameNextBadge.hidden = true;
   const makeSlotChip = (num: '1' | '2') => {
     const chip = el('div', 'hud-slot-chip');
     chip.dataset.active = 'false';
@@ -388,33 +435,43 @@ export function createHudView(container: HTMLElement, totalTargets: number) {
   reloadWrap.append(reloadHeader, reloadTrack);
 
   weaponPanel.append(weaponMain, reloadWrap);
-  weaponCluster.append(slotStrip, weaponPanel);
+  weaponCluster.append(slotStrip, gunGameNextBadge, weaponPanel);
 
-  // 7. Stacked Event Feed (Target Down + Distance)
+  // 8. Stacked Event Feed
   const feedWrap = el('div', 'hud-feed');
 
-  // 8. Run Complete Sweep Banner
+  // 9. Outcome / Course Cleared Sweep Banner (supports Range auto-reset AND Combat Victory/Defeat CTAs!)
   const banner = el('section', 'hud-banner');
   banner.dataset.open = 'false';
+  banner.dataset.tone = 'victory';
   const ruleTop = el('div', 'hud-banner__rule hud-banner__rule--top');
   const ruleBottom = el('div', 'hud-banner__rule hud-banner__rule--bottom');
-  const bannerEyebrow = el('div', 'hud-banner__eyebrow', 'Shoot House · All Targets Down');
-  const bannerTitle = el('h2', 'hud-banner__title', 'Course Cleared');
+  const bannerEyebrow = el('div', 'hud-banner__eyebrow', 'Shoot House · Sector Secured');
+  const bannerTitle = el('h2', 'hud-banner__title', 'Sector Secured');
 
   const bannerStats = el('div', 'hud-banner__stats');
-  const statTimeVal = el('span', 'hud-banner__stat-value', '00:00.00');
-  const statShotsVal = el('span', 'hud-banner__stat-value', '0');
-  const statAccVal = el('span', 'hud-banner__stat-value', '0%');
-  for (const [label, valueEl] of [
-    ['Clear Time', statTimeVal],
-    ['Shots Fired', statShotsVal],
-    ['Accuracy', statAccVal],
+  const stat1Lbl = el('span', 'hud-banner__stat-label', 'Elapsed');
+  const stat1Val = el('span', 'hud-banner__stat-value', '00:00.00');
+  const stat2Lbl = el('span', 'hud-banner__stat-label', 'Hostiles');
+  const stat2Val = el('span', 'hud-banner__stat-value', '10 / 10');
+  const stat3Lbl = el('span', 'hud-banner__stat-label', 'Accuracy');
+  const stat3Val = el('span', 'hud-banner__stat-value', '0%');
+  const stat4Lbl = el('span', 'hud-banner__stat-label', 'Vitals');
+  const stat4Val = el('span', 'hud-banner__stat-value', '100 HP');
+  const stat4Cell = el('div', 'hud-banner__stat');
+
+  for (const [lbl, val, cellOverride] of [
+    [stat1Lbl, stat1Val, null],
+    [stat2Lbl, stat2Val, null],
+    [stat3Lbl, stat3Val, null],
+    [stat4Lbl, stat4Val, stat4Cell],
   ] as const) {
-    const cell = el('div', 'hud-banner__stat');
-    cell.append(el('span', 'hud-banner__stat-label', label), valueEl);
+    const cell = cellOverride ?? el('div', 'hud-banner__stat');
+    cell.append(lbl, val);
     bannerStats.append(cell);
   }
 
+  // Range mode reset countdown bar
   const bannerReset = el('div', 'hud-banner__reset');
   const bannerResetRow = el('div', 'hud-banner__reset-row');
   const bannerResetLabel = el('span', undefined, 'Targets Resetting');
@@ -425,11 +482,45 @@ export function createHudView(container: HTMLElement, totalTargets: number) {
   bannerResetTrack.append(bannerResetFill);
   bannerReset.append(bannerResetRow, bannerResetTrack);
 
-  banner.append(ruleTop, bannerEyebrow, bannerTitle, bannerStats, bannerReset, ruleBottom);
+  // Combat modes interactive outcome actions (Deploy Again / Return to Title)
+  const bannerActions = el('div', 'hud-banner__actions');
+  const restartBtn = el('button', 'hud-banner__btn hud-banner__btn--primary');
+  restartBtn.type = 'button';
+  restartBtn.dataset.action = 'outcome-restart';
+  restartBtn.append(
+    createIcon('restart'),
+    el('span', undefined, 'Deploy Again'),
+    createKeycap('Enter'),
+  );
+  restartBtn.addEventListener('click', () => {
+    actions.onRestartRun();
+  });
+
+  const titleBtn = el('button', 'hud-banner__btn');
+  titleBtn.type = 'button';
+  titleBtn.dataset.action = 'outcome-title';
+  titleBtn.append(createIcon('quit'), el('span', undefined, 'Main Menu'));
+  titleBtn.addEventListener('click', () => {
+    actions.onQuitToTitle();
+  });
+  bannerActions.append(restartBtn, titleBtn);
+
+  banner.append(
+    ruleTop,
+    bannerEyebrow,
+    bannerTitle,
+    bannerStats,
+    bannerReset,
+    bannerActions,
+    ruleBottom,
+  );
 
   layer.append(
+    damageVignette,
+    damageArc,
     scope.root,
     objective,
+    vitalsPanel,
     crosshair,
     hitMarker,
     reloadPrompt,
@@ -440,8 +531,10 @@ export function createHudView(container: HTMLElement, totalTargets: number) {
   );
   container.append(layer);
 
-  // Cached state to avoid unnecessary DOM writes in the 60+ Hz frame loop
+  // Cached state
   let shownVisible = true;
+  let shownMode = '';
+  let shownObjectiveTotal = initialTargets;
   let shownWeaponId: WeaponId | null = null;
   let shownOpticId: OpticId | null = null;
   let shownSlotKey = '';
@@ -452,9 +545,12 @@ export function createHudView(container: HTMLElement, totalTargets: number) {
   let shownScopeZoom = '';
   let shownScopeVariable = false;
   let shownDown = -1;
+  let shownGunGameTier = -2;
   let shownCleared = false;
   let shownTimer = '';
   let shownTimerActive = false;
+  let shownHealth = -1;
+  let shownVitalsState = '';
   let shownRounds = -1;
   let shownAmmoState = 'normal';
   let shownStatusTone = 'none';
@@ -466,10 +562,12 @@ export function createHudView(container: HTMLElement, totalTargets: number) {
   let shownSprint = false;
   let shownFeedVisible = true;
   let shownBannerOpen = false;
+  let shownBannerTone = '';
   let shownBannerStatsKey = '';
   let shownResetText = '';
   let lastGapPx = -1;
   let lastCrosshairOpacity = -1;
+  let lastVignetteOpacity = '';
 
   let spreadGap = 5;
   let shotKick = 0;
@@ -477,6 +575,8 @@ export function createHudView(container: HTMLElement, totalTargets: number) {
   let hitDuration = HIT_DURATION;
   let tickPopTimer = 0;
   let dryFireTimer = 0;
+  let dirArcTimer = 0;
+  let dirArcWorldVec: { x: number; z: number } | null = null;
   const feedItems: FeedEntry[] = [];
 
   function syncWeaponPresentation(weaponId: WeaponId, opticId: OpticId) {
@@ -484,7 +584,7 @@ export function createHudView(container: HTMLElement, totalTargets: number) {
     const optic = OPTICS[opticId];
     shownWeaponId = weaponId;
     shownOpticId = opticId;
-    shownRounds = -1; // Force pip & counter refresh for new magazine size.
+    shownRounds = -1;
 
     weaponSvgHost.replaceChildren(createWeaponSilhouette(weaponId, 'hud-weapon-svg'));
     weaponName.textContent = spec.name;
@@ -492,7 +592,6 @@ export function createHudView(container: HTMLElement, totalTargets: number) {
     weaponMode.textContent = FIRE_MODE_SHORT[spec.fireMode] ?? spec.fireMode.toUpperCase();
     roundsCapacity.textContent = `/ ${spec.magazineSize}`;
 
-    // Compact pip styling for 20-30 round rifle/SMG magazines so pips never wrap awkwardly.
     pipsRow.dataset.density = spec.magazineSize > 12 ? 'compact' : 'standard';
     pipsRow.replaceChildren();
     pips = Array.from({ length: spec.magazineSize }, () => {
@@ -503,11 +602,12 @@ export function createHudView(container: HTMLElement, totalTargets: number) {
     });
   }
 
-  function pushFeed(distanceMetres: number, downCount: number) {
+  function pushFeed(text: string, rightTag: string, accentHeadshot = false) {
     const row = el('div', 'hud-feed__item');
+    if (accentHeadshot) row.dataset.headshot = 'true';
     row.dataset.entering = 'true';
-    const label = el('span', 'hud-feed__label', `Target ${downCount}/${totalTargets}`);
-    const dist = el('span', 'hud-feed__distance', `${distanceMetres.toFixed(1)} m`);
+    const label = el('span', 'hud-feed__label', text);
+    const dist = el('span', 'hud-feed__distance', rightTag);
     row.append(createIcon('target'), label, dist);
     feedWrap.prepend(row);
     requestAnimationFrame(() => {
@@ -533,11 +633,44 @@ export function createHudView(container: HTMLElement, totalTargets: number) {
       }
     },
 
-    onTargetDown(distanceMetres: number, downCount: number) {
+    onEnemyHit(headshot: boolean) {
+      hitDuration = headshot ? KILL_DURATION : HIT_DURATION;
+      hitTimer = hitDuration;
+      hitMarker.dataset.kind = headshot ? 'kill' : 'enemy';
+    },
+
+    onEnemyDown(
+      distanceMetres: number,
+      downCount: number,
+      totalEnemies: number,
+      headshot: boolean,
+    ) {
       hitDuration = KILL_DURATION;
       hitTimer = KILL_DURATION;
       hitMarker.dataset.kind = 'kill';
-      pushFeed(distanceMetres, downCount);
+      const prefix = headshot ? 'Headshot' : 'Hostile Down';
+      pushFeed(
+        `${prefix} ${downCount}/${totalEnemies}`,
+        `${distanceMetres.toFixed(1)} m`,
+        headshot,
+      );
+    },
+
+    onTierAdvance(tierIndex: number, totalTiers: number, weaponId: WeaponId) {
+      const wName = getWeaponSpec(weaponId).name;
+      pushFeed(`Tier ${tierIndex + 1}/${totalTiers} · ${wName}`, 'PROMOTED', true);
+    },
+
+    onPlayerHit(fromDir: { readonly x: number; readonly z: number }) {
+      dirArcTimer = DIR_ARC_SECONDS;
+      dirArcWorldVec = { x: fromDir.x, z: fromDir.z };
+    },
+
+    onTargetDown(distanceMetres: number, downCount: number, totalCount: number) {
+      hitDuration = KILL_DURATION;
+      hitTimer = KILL_DURATION;
+      hitMarker.dataset.kind = 'kill';
+      pushFeed(`Target ${downCount}/${totalCount}`, `${distanceMetres.toFixed(1)} m`);
     },
 
     onDryFire() {
@@ -547,6 +680,8 @@ export function createHudView(container: HTMLElement, totalTargets: number) {
 
     clearFeed() {
       hitTimer = 0;
+      dirArcTimer = 0;
+      damageArc.style.opacity = '0';
       hitMarker.style.opacity = '0';
       while (feedItems.length > 0) {
         feedItems.pop()?.element.remove();
@@ -556,6 +691,7 @@ export function createHudView(container: HTMLElement, totalTargets: number) {
     update(dt: number, input: HudFrameInput) {
       const { state, aimBlend, scopeOverlay, visible, reducedMotion, showTacticalFeed } = input;
       const spec = activeWeaponSpec(state);
+      const modeSpec = getGameModeSpec(state.mode);
 
       if (visible !== shownVisible) {
         shownVisible = visible;
@@ -568,8 +704,81 @@ export function createHudView(container: HTMLElement, totalTargets: number) {
         stanceWrap.hidden = !showTacticalFeed;
       }
 
-      // Multi-optic scope overlay (`acog` 3.5× / `lpvo` 2–5× / `sniper` 6–10×), fully memoized!
-      const showScope = scopeOverlay.active && visible && scopeOverlay.style !== 'none';
+      // Mode switch sync (Gun Game 8-Weapon Ladder vs Practice 16 Steel Targets)
+      const wantedTotal = modeSpec.usesWeaponLadder
+        ? GUN_GAME_LADDER.length
+        : modeSpec.usesEnemies
+          ? state.enemies.length
+          : state.targetsDown.length;
+      if (state.mode !== shownMode || wantedTotal !== shownObjectiveTotal) {
+        shownMode = state.mode;
+        shownObjectiveTotal = wantedTotal;
+        shownDown = -1;
+        shownGunGameTier = -2;
+        targetLabel.textContent = modeSpec.objectiveLabel;
+        vitalsPanel.hidden = !modeSpec.usesEnemies;
+        slotStrip.hidden = modeSpec.usesWeaponLadder;
+        gunGameNextBadge.hidden = !modeSpec.usesWeaponLadder;
+        nextGunRow.hidden = !modeSpec.usesWeaponLadder;
+        rebuildSegments(wantedTotal);
+      }
+
+      // Incoming damage vignette + directional arc
+      const lowHpRatio = modeSpec.usesEnemies
+        ? Math.max(0, (35 - state.playerHealth) / 35) * 0.28
+        : 0;
+      const vigAlpha = Math.min(0.85, state.damagePulse * 0.65 + lowHpRatio);
+      const vigStr = vigAlpha.toFixed(2);
+      if (vigStr !== lastVignetteOpacity) {
+        lastVignetteOpacity = vigStr;
+        damageVignette.style.opacity = vigStr;
+      }
+
+      if (dirArcTimer > 0 && dirArcWorldVec) {
+        dirArcTimer = Math.max(0, dirArcTimer - dt);
+        // Player forward in XZ is `(-sin(yaw), -cos(yaw))`, right is `(cos(yaw), -sin(yaw))`.
+        const yaw = state.player.yaw;
+        const fwdDot = dirArcWorldVec.x * -Math.sin(yaw) + dirArcWorldVec.z * -Math.cos(yaw);
+        const rightDot = dirArcWorldVec.x * Math.cos(yaw) + dirArcWorldVec.z * -Math.sin(yaw);
+        const angleDeg = (Math.atan2(rightDot, fwdDot) * 180) / Math.PI;
+        const arcOpacity = Math.min(1, (dirArcTimer / DIR_ARC_SECONDS) * 1.15);
+        damageArc.style.opacity = arcOpacity.toFixed(2);
+        damageArc.style.transform = `translate(-50%, -50%) rotate(${angleDeg.toFixed(1)}deg)`;
+      } else if (damageArc.style.opacity !== '0') {
+        damageArc.style.opacity = '0';
+      }
+
+      // Operator Vitals Card
+      if (modeSpec.usesEnemies) {
+        const hp = Math.ceil(state.playerHealth);
+        if (hp !== shownHealth) {
+          shownHealth = hp;
+          vitalsCurrent.textContent = String(hp);
+          vitalsMax.textContent = `/ ${state.playerMaxHealth}`;
+          const filledSegs = Math.ceil((hp / Math.max(1, state.playerMaxHealth)) * VITALS_SEGS);
+          for (let i = 0; i < VITALS_SEGS; i++) {
+            const seg = vitalsSegs[i];
+            if (seg) seg.dataset.filled = i < filledSegs ? 'true' : 'false';
+          }
+        }
+        const vState = hp <= 30 ? 'critical' : hp <= 55 ? 'warning' : 'healthy';
+        if (vState !== shownVitalsState) {
+          shownVitalsState = vState;
+          vitalsPanel.dataset.state = vState;
+        }
+      }
+
+      // Multi-optic scope overlay
+      const outcomeOpen =
+        state.outcome === 'victory' ||
+        state.outcome === 'defeat' ||
+        (!modeSpec.usesEnemies &&
+          state.targetsDown.length > 0 &&
+          state.targetsDown.every(Boolean) &&
+          state.resetIn > 0);
+
+      const showScope =
+        !outcomeOpen && scopeOverlay.active && visible && scopeOverlay.style !== 'none';
       if (showScope) {
         scope.setStyle(scopeOverlay.style);
         if (!shownScopeActive) {
@@ -602,12 +811,10 @@ export function createHudView(container: HTMLElement, totalTargets: number) {
         scope.root.style.opacity = '0';
       }
 
-      // Sync weapon silhouette, name, calibre + mounted optic tag, and adaptive pips when changed.
       if (state.weapon.weaponId !== shownWeaponId || spec.opticId !== shownOpticId) {
         syncWeaponPresentation(state.weapon.weaponId, spec.opticId);
       }
 
-      // Sync Primary [1] / Secondary [2] quick-slot strip.
       const slotKey = `${state.weapon.loadout.primary}|${state.weapon.loadout.secondary}`;
       if (slotKey !== shownSlotKey) {
         shownSlotKey = slotKey;
@@ -631,7 +838,6 @@ export function createHudView(container: HTMLElement, totalTargets: number) {
         if (dryFireTimer === 0) delete weaponPanel.dataset.dryFire;
       }
 
-      // Hit marker snap + fade
       if (hitTimer > 0) {
         hitTimer = Math.max(0, hitTimer - dt);
         const progress = 1 - hitTimer / hitDuration;
@@ -647,7 +853,6 @@ export function createHudView(container: HTMLElement, totalTargets: number) {
         hitMarker.style.opacity = '0';
       }
 
-      // Event feed lifetimes
       for (let i = feedItems.length - 1; i >= 0; i--) {
         const entry = feedItems[i];
         if (!entry) continue;
@@ -664,20 +869,71 @@ export function createHudView(container: HTMLElement, totalTargets: number) {
 
       // Objective tracker & segments
       let downCount = 0;
-      for (let i = 0; i < state.targetsDown.length; i++) {
-        const isDown = Boolean(state.targetsDown[i]);
-        if (isDown) downCount++;
-        const seg = segments[i];
-        if (seg) {
-          const wanted = isDown ? 'true' : 'false';
-          if (seg.dataset.down !== wanted) seg.dataset.down = wanted;
+      if (modeSpec.usesWeaponLadder) {
+        const completedTiers =
+          state.outcome === 'victory' ? GUN_GAME_LADDER.length : state.gunGameTier;
+        const displayTier = Math.min(GUN_GAME_LADDER.length, state.gunGameTier + 1);
+        downCount = displayTier;
+        for (let i = 0; i < GUN_GAME_LADDER.length; i++) {
+          const seg = segments[i];
+          if (!seg) continue;
+          const isCleared = i < completedTiers;
+          const isActiveTier = state.outcome !== 'victory' && i === state.gunGameTier;
+          const wantedDown = isCleared ? 'true' : 'false';
+          const wantedActive = isActiveTier ? 'true' : 'false';
+          if (seg.dataset.down !== wantedDown) seg.dataset.down = wantedDown;
+          if (seg.dataset.current !== wantedActive) seg.dataset.current = wantedActive;
+        }
+
+        const tierKey = state.outcome === 'victory' ? 999 : state.gunGameTier;
+        if (tierKey !== shownGunGameTier) {
+          shownGunGameTier = tierKey;
+          const curWeaponId = GUN_GAME_LADDER[state.gunGameTier] ?? state.weapon.weaponId;
+          const curName = getWeaponSpec(curWeaponId).name;
+          const nextWeaponId = GUN_GAME_LADDER[state.gunGameTier + 1];
+          if (state.outcome === 'victory') {
+            nextGunRow.textContent = 'ALL 8 WEAPON TIERS CLEARED';
+            gunGameNextBadge.textContent = 'LADDER COMPLETE';
+          } else if (nextWeaponId) {
+            const nextName = getWeaponSpec(nextWeaponId).name;
+            nextGunRow.textContent = `${curName}  →  NEXT: ${nextName}`;
+            gunGameNextBadge.textContent = `TIER ${displayTier}/${GUN_GAME_LADDER.length} · NEXT: ${nextName}`;
+          } else {
+            nextGunRow.textContent = `${curName}  ·  FINAL TIER — 1 KILL TO WIN`;
+            gunGameNextBadge.textContent = `FINAL TIER ${displayTier}/${GUN_GAME_LADDER.length} · ${curName}`;
+          }
+        }
+      } else if (modeSpec.usesEnemies) {
+        for (let i = 0; i < state.enemies.length; i++) {
+          const isDown = state.enemies[i]?.alive === false;
+          if (isDown) downCount++;
+          const seg = segments[i];
+          if (seg) {
+            const wanted = isDown ? 'true' : 'false';
+            if (seg.dataset.down !== wanted) seg.dataset.down = wanted;
+            delete seg.dataset.current;
+          }
+        }
+      } else {
+        for (let i = 0; i < state.targetsDown.length; i++) {
+          const isDown = Boolean(state.targetsDown[i]);
+          if (isDown) downCount++;
+          const seg = segments[i];
+          if (seg) {
+            const wanted = isDown ? 'true' : 'false';
+            if (seg.dataset.down !== wanted) seg.dataset.down = wanted;
+            delete seg.dataset.current;
+          }
         }
       }
+
       if (downCount !== shownDown) {
         shownDown = downCount;
         targetDownNum.textContent = String(downCount);
       }
-      const cleared = downCount === totalTargets && totalTargets > 0;
+      const cleared = modeSpec.usesWeaponLadder
+        ? state.outcome === 'victory'
+        : wantedTotal > 0 && downCount === wantedTotal;
       if (cleared !== shownCleared) {
         shownCleared = cleared;
         objective.dataset.cleared = cleared ? 'true' : 'false';
@@ -693,8 +949,7 @@ export function createHudView(container: HTMLElement, totalTargets: number) {
         timerValue.dataset.active = state.run.active ? 'true' : 'false';
       }
 
-      // Dynamic crosshair spread & ADS fade (widens slightly for shotgun buckshot!)
-      const bannerOpen = cleared && state.resetIn > 0;
+      // Crosshair spread & ADS fade
       const planarSpeed = Math.hypot(state.player.velocity.x, state.player.velocity.z);
       const moveFactor = Math.min(1.5, planarSpeed / PLAYER_TUNING.walkSpeed);
       const airPenalty = state.player.grounded ? 0 : 8.5;
@@ -717,7 +972,7 @@ export function createHudView(container: HTMLElement, totalTargets: number) {
       }
 
       const crosshairOpacity =
-        bannerOpen || scopeOverlay.active ? 0 : Math.max(0, Math.min(1, 1 - aimBlend * 1.25));
+        outcomeOpen || scopeOverlay.active ? 0 : Math.max(0, Math.min(1, 1 - aimBlend * 1.25));
       const roundedOpacity = Math.round(crosshairOpacity * 100) / 100;
       if (roundedOpacity !== lastCrosshairOpacity) {
         lastCrosshairOpacity = roundedOpacity;
@@ -788,9 +1043,8 @@ export function createHudView(container: HTMLElement, totalTargets: number) {
         }
       }
 
-      // Contextual Reload Prompt
       const promptState =
-        reloading || cleared
+        reloading || outcomeOpen
           ? 'hidden'
           : rounds === 0
             ? 'empty'
@@ -822,27 +1076,78 @@ export function createHudView(container: HTMLElement, totalTargets: number) {
         sprintPill.dataset.active = sprinting ? 'true' : 'false';
       }
 
-      // Run Complete Sweep Banner
-      if (bannerOpen !== shownBannerOpen) {
-        shownBannerOpen = bannerOpen;
-        banner.dataset.open = bannerOpen ? 'true' : 'false';
+      // Outcome / Course Cleared Banner
+      if (outcomeOpen !== shownBannerOpen) {
+        shownBannerOpen = outcomeOpen;
+        banner.dataset.open = outcomeOpen ? 'true' : 'false';
       }
 
-      if (bannerOpen) {
-        const accuracy = runAccuracyPercent(state.run);
-        const statsKey = `${timerText}|${state.run.shotsFired}|${accuracy}`;
-        if (statsKey !== shownBannerStatsKey) {
-          shownBannerStatsKey = statsKey;
-          statTimeVal.textContent = timerText;
-          statShotsVal.textContent = String(state.run.shotsFired);
-          statAccVal.textContent = `${accuracy}%`;
+      if (outcomeOpen) {
+        const tone = state.outcome === 'defeat' ? 'defeat' : 'victory';
+        if (tone !== shownBannerTone) {
+          shownBannerTone = tone;
+          banner.dataset.tone = tone;
         }
-        const resetFrac = Math.max(0, Math.min(1, state.resetIn / TARGET.resetDelay));
-        bannerResetFill.style.transform = `scaleX(${resetFrac.toFixed(3)})`;
-        const resetText = `${state.resetIn.toFixed(1)}s`;
-        if (resetText !== shownResetText) {
-          shownResetText = resetText;
-          bannerResetValue.textContent = resetText;
+
+        const accuracy = runAccuracyPercent(state.run);
+        const mapName = getMapById(state.mapId).name;
+        if (modeSpec.usesEnemies) {
+          bannerReset.hidden = true;
+          bannerActions.hidden = false;
+          stat4Cell.hidden = false;
+          bannerStats.dataset.columns = '4';
+
+          if (state.outcome === 'victory') {
+            bannerEyebrow.textContent = `${mapName} · ${modeSpec.name} Complete`;
+            bannerTitle.textContent = modeSpec.usesWeaponLadder
+              ? 'Arsenal Mastered'
+              : 'Sector Secured';
+          } else {
+            bannerEyebrow.textContent = `${mapName} · ${modeSpec.name} — KIA`;
+            bannerTitle.textContent = 'Operator Down';
+          }
+
+          const tierStat = modeSpec.usesWeaponLadder
+            ? `${state.outcome === 'victory' ? GUN_GAME_LADDER.length : state.gunGameTier + 1} / ${GUN_GAME_LADDER.length}`
+            : `${downCount} / ${wantedTotal}`;
+          const statsKey = `combat|${mapName}|${timerText}|${tierStat}|${accuracy}|${Math.ceil(state.playerHealth)}`;
+          if (statsKey !== shownBannerStatsKey) {
+            shownBannerStatsKey = statsKey;
+            stat1Lbl.textContent = 'Elapsed';
+            stat1Val.textContent = timerText;
+            stat2Lbl.textContent = modeSpec.usesWeaponLadder ? 'Weapon Tier' : 'Hostiles';
+            stat2Val.textContent = tierStat;
+            stat3Lbl.textContent = 'Accuracy';
+            stat3Val.textContent = `${accuracy}%`;
+            stat4Lbl.textContent = 'Vitals';
+            stat4Val.textContent = `${Math.ceil(state.playerHealth)} HP`;
+          }
+        } else {
+          bannerReset.hidden = false;
+          bannerActions.hidden = true;
+          stat4Cell.hidden = true;
+          bannerStats.dataset.columns = '3';
+          bannerEyebrow.textContent = `${mapName} · All Practice Targets Down`;
+          bannerTitle.textContent = 'Course Cleared';
+
+          const statsKey = `range|${timerText}|${state.run.shotsFired}|${accuracy}`;
+          if (statsKey !== shownBannerStatsKey) {
+            shownBannerStatsKey = statsKey;
+            stat1Lbl.textContent = 'Clear Time';
+            stat1Val.textContent = timerText;
+            stat2Lbl.textContent = 'Shots Fired';
+            stat2Val.textContent = String(state.run.shotsFired);
+            stat3Lbl.textContent = 'Accuracy';
+            stat3Val.textContent = `${accuracy}%`;
+          }
+
+          const resetFrac = Math.max(0, Math.min(1, state.resetIn / TARGET.resetDelay));
+          bannerResetFill.style.transform = `scaleX(${resetFrac.toFixed(3)})`;
+          const resetText = `${state.resetIn.toFixed(1)}s`;
+          if (resetText !== shownResetText) {
+            shownResetText = resetText;
+            bannerResetValue.textContent = resetText;
+          }
         }
       }
     },
