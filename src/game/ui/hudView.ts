@@ -1,3 +1,6 @@
+import { BOOST_TUNING, CONSUMABLE_ORDER, CONSUMABLES } from '../../core/consumables';
+import type { ConsumableId } from '../../core/consumables';
+import { ARMOUR_TUNING } from '../../core/damage';
 import type { GameState } from '../../core/game';
 import { activeWeaponSpec, runAccuracyPercent, TARGET } from '../../core/game';
 import { getMapById } from '../../core/maps';
@@ -19,8 +22,19 @@ const TICK_POP_SECONDS = 0.14;
 const DRY_FIRE_SECONDS = 0.18;
 const DIR_ARC_SECONDS = 0.72;
 
+/** Keys printed on the item tray; they match `CONSUMABLE_KEYS` in `input.ts`. */
+const CONSUMABLE_KEY_LABEL: Readonly<Record<ConsumableId, string>> = {
+  'med-kit': '7',
+  'first-aid': '8',
+  bandage: '9',
+  'energy-drink': '0',
+  painkiller: '-',
+};
+const ARMOUR_LEVEL_LABEL = ['—', 'L1', 'L2', 'L3'] as const;
+
 const FIRE_MODE_SHORT: Record<string, string> = {
   auto: 'AUTO',
+  burst: 'BURST',
   semi: 'SEMI',
   pump: 'PUMP',
   bolt: 'BOLT',
@@ -222,7 +236,99 @@ function buildScopeOverlay(): {
     }),
   );
 
-  reticleSvg.append(acogGroup, lpvoGroup, sniperGroup);
+  // --- 4. PSO-1 4× ---
+  // Centre chevron with three hold-over chevrons below it, a windage scale ticked every
+  // mil out to ten, and the stadiametric rangefinder curve in the lower left quadrant.
+  const psoGroup = svgEl('g', { class: 'hud-scope__group' });
+  const psoMil = 17;
+  const psoTicks: string[] = [];
+  for (let i = 1; i <= 10; i++) {
+    const len = i % 5 === 0 ? 13 : 7;
+    psoTicks.push(`M ${500 - i * psoMil} ${500 - len} V 500`);
+    psoTicks.push(`M ${500 + i * psoMil} ${500 - len} V 500`);
+  }
+  const psoChevrons = [44, 88, 132]
+    .map((drop) => `M 490 ${500 + drop + 11} L 500 ${500 + drop} L 510 ${500 + drop + 11}`)
+    .join(' ');
+  psoGroup.append(
+    svgEl('circle', {
+      cx: '500',
+      cy: '500',
+      r: '462',
+      fill: 'none',
+      stroke: 'rgba(9, 12, 14, 0.96)',
+      'stroke-width': '30',
+    }),
+    svgEl('circle', {
+      cx: '500',
+      cy: '500',
+      r: '446',
+      fill: 'none',
+      stroke: 'rgba(214, 196, 132, 0.15)',
+      'stroke-width': '2',
+    }),
+    svgEl('path', {
+      d: `M ${500 - 10 * psoMil} 500 H 486 M 514 500 H ${500 + 10 * psoMil}`,
+      stroke: 'rgba(12, 16, 22, 0.92)',
+      'stroke-width': '1.9',
+    }),
+    svgEl('path', {
+      d: psoTicks.join(' '),
+      stroke: 'rgba(12, 16, 22, 0.9)',
+      'stroke-width': '2.4',
+    }),
+    svgEl('path', {
+      d: `M 488 513 L 500 500 L 512 513 ${psoChevrons}`,
+      fill: 'none',
+      stroke: 'rgba(10, 14, 18, 0.95)',
+      'stroke-width': '3.4',
+      'stroke-linejoin': 'miter',
+    }),
+    svgEl('path', {
+      // Rangefinder: a flat base line and the curve a 1.7 m figure is fitted under.
+      d: 'M 300 660 H 452 M 300 598 C 340 632, 400 648, 452 652',
+      fill: 'none',
+      stroke: 'rgba(12, 16, 22, 0.88)',
+      'stroke-width': '1.9',
+    }),
+    svgEl('path', {
+      d: 'M 300 660 V 667 M 338 660 V 667 M 376 660 V 667 M 414 660 V 667 M 452 660 V 667',
+      stroke: 'rgba(12, 16, 22, 0.88)',
+      'stroke-width': '1.9',
+    }),
+  );
+  for (const [x, label] of [
+    [300, '2'],
+    [338, '4'],
+    [376, '6'],
+    [414, '8'],
+    [452, '10'],
+  ] as const) {
+    const text = svgEl('text', {
+      x: String(x),
+      y: '686',
+      'text-anchor': 'middle',
+      'font-size': '15',
+      'font-family': 'sans-serif',
+      fill: 'rgba(12, 16, 22, 0.88)',
+    });
+    text.textContent = label;
+    psoGroup.append(text);
+  }
+  for (const side of [-1, 1]) {
+    const text = svgEl('text', {
+      x: String(500 + side * 10 * psoMil),
+      y: '478',
+      'text-anchor': 'middle',
+      'font-size': '15',
+      'font-family': 'sans-serif',
+      fill: 'rgba(12, 16, 22, 0.88)',
+    });
+    text.textContent = '10';
+    psoGroup.append(text);
+  }
+
+  reticleSvg.append(acogGroup, lpvoGroup, sniperGroup, psoGroup);
 
   const zoomHud = el('div', 'hud-scope__readout');
   const zoomTag = el('span', 'hud-scope__zoom', '6.0× FFP');
@@ -241,6 +347,7 @@ function buildScopeOverlay(): {
     acogGroup.style.display = style === 'acog' ? '' : 'none';
     lpvoGroup.style.display = style === 'lpvo' ? '' : 'none';
     sniperGroup.style.display = style === 'sniper' ? '' : 'none';
+    psoGroup.style.display = style === 'pso' ? '' : 'none';
   }
   setStyle('sniper');
 
@@ -335,7 +442,75 @@ export function createHudView(container: HTMLElement, initialTargets: number, ac
     vitalsBar.append(s);
     return s;
   });
-  vitalsPanel.append(vitalsTop, vitalsBar);
+
+  // Boost meter: one thin track under the health bar, notched where each healing rate starts.
+  const boostTrack = el('div', 'hud-boost');
+  boostTrack.setAttribute('aria-label', 'Boost');
+  const boostFill = el('div', 'hud-boost__fill');
+  boostTrack.append(boostFill);
+  for (const tier of BOOST_TUNING.tiers) {
+    const notch = el('div', 'hud-boost__notch');
+    notch.style.left = `${((tier.threshold / BOOST_TUNING.max) * 100).toFixed(1)}%`;
+    boostTrack.append(notch);
+  }
+
+  // Armour: helmet and vest, each with its level and remaining durability.
+  const armourRow = el('div', 'hud-armour');
+  const makeArmourCell = (label: string) => {
+    const cell = el('div', 'hud-armour__cell');
+    cell.dataset.state = 'none';
+    const name = el('span', 'hud-armour__name', label);
+    const level = el('span', 'hud-armour__level', '—');
+    const track = el('div', 'hud-armour__track');
+    const fill = el('div', 'hud-armour__fill');
+    track.append(fill);
+    cell.append(name, level, track);
+    armourRow.append(cell);
+    return { cell, level, fill };
+  };
+  const helmetCell = makeArmourCell('Helmet');
+  const vestCell = makeArmourCell('Vest');
+
+  // Item tray: five fixed slots with their key and how many are carried.
+  const itemTray = el('div', 'hud-items');
+  const itemChips = CONSUMABLE_ORDER.map((id) => {
+    const chip = el('div', 'hud-item');
+    chip.dataset.kind = CONSUMABLES[id].kind;
+    chip.dataset.empty = 'true';
+    chip.dataset.using = 'false';
+    chip.title = CONSUMABLES[id].description;
+    const key = createKeycap(CONSUMABLE_KEY_LABEL[id]);
+    const name = el('span', 'hud-item__name', CONSUMABLES[id].shortName);
+    const count = el('span', 'hud-item__count', '0');
+    chip.append(key, name, count);
+    itemTray.append(chip);
+    return { id, chip, count };
+  });
+
+  vitalsPanel.append(vitalsTop, vitalsBar, boostTrack, armourRow, itemTray);
+
+  // 2b. Item-in-use progress, under the crosshair.
+  const usePanel = el('div', 'hud-use');
+  usePanel.dataset.open = 'false';
+  const useHeader = el('div', 'hud-use__header');
+  const useLabel = el('span', 'hud-use__label', 'Using');
+  const useTime = el('span', 'hud-use__time ui-tabular', '0.0s');
+  useHeader.append(useLabel, useTime);
+  const useTrack = el('div', 'hud-use__track');
+  const useFill = el('div', 'hud-use__fill');
+  useTrack.append(useFill);
+  const useHint = el('div', 'hud-use__hint', 'Firing, switching weapon or being hit cancels');
+  usePanel.append(useHeader, useTrack, useHint);
+
+  // 2c. Health of the hurt target under the sights, above the crosshair.
+  const targetPanel = el('div', 'hud-target-health');
+  targetPanel.dataset.open = 'false';
+  const targetHealthLabel = el('span', 'hud-target-health__label', 'Target');
+  const targetHealthNum = el('span', 'hud-target-health__num ui-tabular', '100');
+  const targetHealthTrack = el('div', 'hud-target-health__track');
+  const targetHealthFill = el('div', 'hud-target-health__fill');
+  targetHealthTrack.append(targetHealthFill);
+  targetPanel.append(targetHealthLabel, targetHealthTrack, targetHealthNum);
 
   // 3. Dynamic Crosshair
   const crosshair = el('div', 'hud-crosshair');
@@ -521,6 +696,8 @@ export function createHudView(container: HTMLElement, initialTargets: number, ac
     scope.root,
     objective,
     vitalsPanel,
+    usePanel,
+    targetPanel,
     crosshair,
     hitMarker,
     reloadPrompt,
@@ -537,6 +714,7 @@ export function createHudView(container: HTMLElement, initialTargets: number, ac
   let shownObjectiveTotal = initialTargets;
   let shownWeaponId: WeaponId | null = null;
   let shownOpticId: OpticId | null = null;
+  let shownMagazineSize = -1;
   let shownSlotKey = '';
   let shownActiveSlot: WeaponSlot | null = null;
   let shownScopeActive = false;
@@ -551,6 +729,13 @@ export function createHudView(container: HTMLElement, initialTargets: number, ac
   let shownTimerActive = false;
   let shownHealth = -1;
   let shownVitalsState = '';
+  let shownBoost = '';
+  let shownBoostHealing = false;
+  let shownArmourKey = '';
+  let shownItemsKey = '';
+  let shownUseId: ConsumableId | null = null;
+  let shownUseTime = '';
+  let shownTargetKey = '';
   let shownRounds = -1;
   let shownAmmoState = 'normal';
   let shownStatusTone = 'none';
@@ -579,11 +764,20 @@ export function createHudView(container: HTMLElement, initialTargets: number, ac
   let dirArcWorldVec: { x: number; z: number } | null = null;
   const feedItems: FeedEntry[] = [];
 
-  function syncWeaponPresentation(weaponId: WeaponId, opticId: OpticId) {
-    const spec = getWeaponSpec(weaponId);
+  function syncWeaponPresentation(
+    weaponId: WeaponId,
+    opticId: OpticId,
+    spec: {
+      readonly name: string;
+      readonly caliber: string;
+      readonly fireMode: string;
+      readonly magazineSize: number;
+    },
+  ) {
     const optic = OPTICS[opticId];
     shownWeaponId = weaponId;
     shownOpticId = opticId;
+    shownMagazineSize = spec.magazineSize;
     shownRounds = -1;
 
     weaponSvgHost.replaceChildren(createWeaponSilhouette(weaponId, 'hud-weapon-svg'));
@@ -673,6 +867,15 @@ export function createHudView(container: HTMLElement, initialTargets: number, ac
       pushFeed(`Target ${downCount}/${totalCount}`, `${distanceMetres.toFixed(1)} m`);
     },
 
+    onArmourBroken(piece: 'vest' | 'helmet', mine: boolean) {
+      const what = piece === 'vest' ? 'Vest' : 'Helmet';
+      pushFeed(mine ? `Your ${what} Broke` : `Hostile ${what} Broken`, 'ARMOUR', !mine);
+    },
+
+    onConsumableCancelled(id: ConsumableId) {
+      pushFeed(`${CONSUMABLES[id].shortName} Interrupted`, 'CANCELLED');
+    },
+
     onDryFire() {
       dryFireTimer = DRY_FIRE_SECONDS;
       weaponPanel.dataset.dryFire = 'true';
@@ -717,6 +920,7 @@ export function createHudView(container: HTMLElement, initialTargets: number, ac
         shownGunGameTier = -2;
         targetLabel.textContent = modeSpec.objectiveLabel;
         vitalsPanel.hidden = !modeSpec.usesEnemies;
+        layer.dataset.survival = modeSpec.usesEnemies ? 'true' : 'false';
         slotStrip.hidden = modeSpec.usesWeaponLadder;
         gunGameNextBadge.hidden = !modeSpec.usesWeaponLadder;
         nextGunRow.hidden = !modeSpec.usesWeaponLadder;
@@ -766,6 +970,98 @@ export function createHudView(container: HTMLElement, initialTargets: number, ac
           shownVitalsState = vState;
           vitalsPanel.dataset.state = vState;
         }
+
+        const boostText = ((state.playerBoost / BOOST_TUNING.max) * 100).toFixed(0);
+        if (boostText !== shownBoost) {
+          shownBoost = boostText;
+          boostFill.style.width = `${boostText}%`;
+        }
+        const boostHealing = BOOST_TUNING.tiers.some((tier) => state.playerBoost > tier.threshold);
+        if (boostHealing !== shownBoostHealing) {
+          shownBoostHealing = boostHealing;
+          boostTrack.dataset.healing = boostHealing ? 'true' : 'false';
+        }
+
+        const armour = state.playerArmour;
+        const armourKey = `${armour.helmet}:${Math.ceil(armour.helmetDurability)}|${armour.vest}:${Math.ceil(armour.vestDurability)}`;
+        if (armourKey !== shownArmourKey) {
+          shownArmourKey = armourKey;
+          const paint = (
+            cell: { cell: HTMLElement; level: HTMLElement; fill: HTMLElement },
+            level: 0 | 1 | 2 | 3,
+            durability: number,
+            pool: number,
+          ) => {
+            const share = pool > 0 ? Math.max(0, Math.min(1, durability / pool)) : 0;
+            cell.level.textContent = ARMOUR_LEVEL_LABEL[level];
+            cell.fill.style.width = `${(share * 100).toFixed(0)}%`;
+            cell.cell.dataset.state =
+              level === 0 ? 'none' : share <= 0 ? 'broken' : share < 0.3 ? 'worn' : 'sound';
+          };
+          paint(
+            helmetCell,
+            armour.helmet,
+            armour.helmetDurability,
+            ARMOUR_TUNING.helmetDurability[armour.helmet],
+          );
+          paint(
+            vestCell,
+            armour.vest,
+            armour.vestDurability,
+            ARMOUR_TUNING.vestDurability[armour.vest],
+          );
+        }
+
+        const usingId = state.consumableUse?.id ?? null;
+        const itemsKey = `${CONSUMABLE_ORDER.map((id) => state.consumables[id]).join(',')}|${usingId ?? ''}`;
+        if (itemsKey !== shownItemsKey) {
+          shownItemsKey = itemsKey;
+          for (const item of itemChips) {
+            const carried = state.consumables[item.id];
+            item.count.textContent = String(carried);
+            item.chip.dataset.empty = carried > 0 ? 'false' : 'true';
+            item.chip.dataset.using = item.id === usingId ? 'true' : 'false';
+          }
+        }
+      }
+
+      // Item-in-use progress
+      const use = state.consumableUse;
+      if (use) {
+        if (use.id !== shownUseId) {
+          shownUseId = use.id;
+          usePanel.dataset.open = 'true';
+          usePanel.dataset.kind = CONSUMABLES[use.id].kind;
+          useLabel.textContent = `Using ${CONSUMABLES[use.id].name}`;
+        }
+        const left = `${use.remaining.toFixed(1)}s`;
+        if (left !== shownUseTime) {
+          shownUseTime = left;
+          useTime.textContent = left;
+          const done = use.duration > 0 ? 1 - use.remaining / use.duration : 1;
+          useFill.style.transform = `scaleX(${Math.max(0, Math.min(1, done)).toFixed(3)})`;
+        }
+      } else if (shownUseId !== null) {
+        shownUseId = null;
+        shownUseTime = '';
+        usePanel.dataset.open = 'false';
+      }
+
+      // Aimed-target health readout
+      const aimed = state.aimedTarget;
+      const targetKey = aimed ? `${Math.ceil(aimed.health)}/${aimed.maxHealth}` : '';
+      if (targetKey !== shownTargetKey) {
+        shownTargetKey = targetKey;
+        if (aimed) {
+          const share = Math.max(0, Math.min(1, aimed.health / Math.max(1, aimed.maxHealth)));
+          targetPanel.dataset.open = 'true';
+          targetPanel.dataset.state = share <= 0.3 ? 'critical' : share <= 0.6 ? 'hurt' : 'sound';
+          targetHealthLabel.textContent = aimed.entity.kind === 'dummy' ? 'Dummy' : 'Hostile';
+          targetHealthNum.textContent = String(Math.ceil(aimed.health));
+          targetHealthFill.style.width = `${(share * 100).toFixed(0)}%`;
+        } else {
+          targetPanel.dataset.open = 'false';
+        }
       }
 
       // Multi-optic scope overlay
@@ -811,8 +1107,13 @@ export function createHudView(container: HTMLElement, initialTargets: number, ac
         scope.root.style.opacity = '0';
       }
 
-      if (state.weapon.weaponId !== shownWeaponId || spec.opticId !== shownOpticId) {
-        syncWeaponPresentation(state.weapon.weaponId, spec.opticId);
+      // The spec here already includes fitted attachments, so an extended magazine shows.
+      if (
+        state.weapon.weaponId !== shownWeaponId ||
+        spec.opticId !== shownOpticId ||
+        spec.magazineSize !== shownMagazineSize
+      ) {
+        syncWeaponPresentation(state.weapon.weaponId, spec.opticId, spec);
       }
 
       const slotKey = `${state.weapon.loadout.primary}|${state.weapon.loadout.secondary}`;

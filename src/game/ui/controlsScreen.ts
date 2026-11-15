@@ -52,6 +52,18 @@ const CONTROL_SECTIONS: readonly ControlSectionSpec[] = [
     ],
   },
   {
+    title: 'Healing & Boosts',
+    rows: [
+      { action: 'Heal (best item for your health)', bindings: [{ kind: 'key', label: 'H' }] },
+      { action: 'Boost (energy drink or painkillers)', bindings: [{ kind: 'key', label: 'B' }] },
+      { action: 'Med Kit', bindings: [{ kind: 'key', label: '7' }] },
+      { action: 'First Aid Kit', bindings: [{ kind: 'key', label: '8' }] },
+      { action: 'Bandage', bindings: [{ kind: 'key', label: '9' }] },
+      { action: 'Energy Drink', bindings: [{ kind: 'key', label: '0' }] },
+      { action: 'Painkillers', bindings: [{ kind: 'key', label: '-' }] },
+    ],
+  },
+  {
     title: 'Tactical Stance',
     rows: [
       { action: 'Lean Left (Hold or Toggle)', bindings: [{ kind: 'key', label: 'Q' }] },

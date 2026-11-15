@@ -1,3 +1,6 @@
+import type { ConsumableInventory } from './consumables';
+import { EMPTY_CONSUMABLES } from './consumables';
+import type { ArmourLevel } from './damage';
 import type { WeaponId } from './weapon';
 
 /**
@@ -66,6 +69,12 @@ export interface GameModeSpec {
   readonly usesWeaponLadder: boolean;
   readonly enemyLimit: number;
   readonly playerMaxHealth: number;
+  /** Vest level the player starts a run with (0 = none). */
+  readonly startingVest: ArmourLevel;
+  /** Helmet level the player starts a run with (0 = none). */
+  readonly startingHelmet: ArmourLevel;
+  /** Healing and boost items the player starts a run with. */
+  readonly startingConsumables: ConsumableInventory;
   readonly autoResetOnClear: boolean;
   readonly tuning: DifficultyTuning;
 }
@@ -88,6 +97,15 @@ export const STANDARD_COMBAT_TUNING: DifficultyTuning = {
   moveSpeed: 3.9,
 };
 
+/** Items handed out at the start of a combat run until loot exists. Game balance. */
+export const STARTING_KIT: ConsumableInventory = {
+  bandage: 5,
+  'first-aid': 2,
+  'med-kit': 1,
+  'energy-drink': 2,
+  painkiller: 1,
+};
+
 export const GAME_MODES: Readonly<Record<GameModeId, GameModeSpec>> = {
   gungame: {
     id: 'gungame',
@@ -102,6 +120,9 @@ export const GAME_MODES: Readonly<Record<GameModeId, GameModeSpec>> = {
     usesWeaponLadder: true,
     enemyLimit: 10,
     playerMaxHealth: 100,
+    startingVest: 1,
+    startingHelmet: 1,
+    startingConsumables: STARTING_KIT,
     autoResetOnClear: false,
     tuning: STANDARD_COMBAT_TUNING,
   },
@@ -118,6 +139,9 @@ export const GAME_MODES: Readonly<Record<GameModeId, GameModeSpec>> = {
     usesWeaponLadder: false,
     enemyLimit: 0,
     playerMaxHealth: 100,
+    startingVest: 0,
+    startingHelmet: 0,
+    startingConsumables: EMPTY_CONSUMABLES,
     autoResetOnClear: true,
     tuning: STANDARD_COMBAT_TUNING,
   },

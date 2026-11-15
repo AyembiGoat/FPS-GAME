@@ -223,7 +223,7 @@ function silhouettePath(
 }
 
 /**
- * Clean left-facing side-profile SVG silhouettes for all 8 firearms in the arsenal.
+ * Clean left-facing side-profile SVG silhouettes for every firearm in the arsenal.
  * Every silhouette matches its real-world geometry and 3D weapon model.
  */
 export function createWeaponSilhouette(id: WeaponId, className = 'hud-weapon-svg'): SVGSVGElement {
@@ -321,6 +321,149 @@ export function createWeaponSilhouette(id: WeaponId, className = 'hud-weapon-svg
           'M104 37 H135 L137 45 H106 Z',
         ].join(' '),
         'M36 28 H172 M118 18 V32 M140 20 L138 27 M146 20 L144 27 M152 20 L150 27 M148 49 L166 49 L179 75 L159 75 Z',
+        '0 0 220 92',
+        className,
+      );
+
+    case 'm16a4':
+      return silhouettePath(
+        [
+          // A2 flash hider, 20" barrel, A-frame front sight, rail handguard, carry handle, fixed A2 stock
+          'M4 31 H13 V30 H50 L55 17 H59 L63 25 H108 V22 H112 V14 L116 11 H140 L144 14 V24 H152 L156 27 H176 L212 30 V60 L200 62 L176 44 H152 L147 46 L155 69 L142 71 L134 49 H117 L112 46 L104 75 L90 72 L97 46 L93 43 H63 V37 H13 V36 H4 Z',
+          // Trigger guard and carry-handle window
+          'M118 42 H132 L133 47 H120 Z M118 15 H138 V21 H118 Z',
+        ].join(' '),
+        'M66 30 H104 M66 36 H104 M160 34 H206',
+        '0 0 220 88',
+        className,
+      );
+
+    case 'aug-a3':
+      return silhouettePath(
+        [
+          // Bullpup: folding foregrip, full-hand guard, magazine behind the grip, one-piece stock body
+          'M6 29 H18 V30 H58 V26 H70 V20 H98 V12 H114 V20 H150 V24 L170 26 H206 L212 30 V62 L206 66 H158 L155 82 H140 L138 60 H124 L128 74 H94 L90 46 H72 V64 H62 V37 H18 V38 H6 Z',
+          // Hand window inside the guard
+          'M96 50 H110 L114 68 H98 Z',
+        ].join(' '),
+        'M74 26 H146 M166 34 H204 M144 62 V78',
+        '0 0 220 88',
+        className,
+      );
+
+    case 'ump45':
+      return silhouettePath(
+        [
+          // Boxy polymer receiver, straight 25-rd .45 magazine, skeleton folding stock
+          'M30 31 H44 V26 H52 V20 H58 V24 H140 V20 H148 V26 L152 28 H204 V25 H212 V58 L200 58 L160 44 H150 L156 68 L144 70 L136 48 H120 L116 46 V78 H100 V46 H56 L52 40 H44 V37 H30 Z',
+          // Trigger guard and stock window
+          'M121 42 H134 L135 47 H123 Z M166 33 H204 V50 L170 38 Z',
+        ].join(' '),
+        'M60 30 H136 M104 50 V74',
+        '0 0 220 88',
+        className,
+      );
+
+    case 'vector':
+      return silhouettePath(
+        [
+          // Flat top rail, deep Super V block ahead of a long stick magazine, folding stock
+          'M40 30 H52 V22 H150 L154 26 H170 L176 24 H206 L212 28 V58 L202 60 L198 40 H176 L170 44 H152 L158 68 L146 70 L138 50 H124 L122 46 V82 H108 V60 H70 L56 44 V37 H40 Z',
+          // Trigger guard and stock window
+          'M126 43 H137 L138 48 H127 Z M180 31 H204 V37 H180 Z',
+        ].join(' '),
+        'M58 28 H146 M112 62 V78 M72 44 L100 56',
+        '0 0 220 88',
+        className,
+      );
+
+    case 'saiga-12':
+      return silhouettePath(
+        [
+          // Kalashnikov-pattern shotgun: thick barrel, short handguard, wide raked box magazine
+          'M6 30 H18 V29 H50 L56 23 H96 V26 H108 L114 23 H148 L153 27 L211 34 V58 L199 58 L150 44 L145 45 L155 67 L143 69 L134 48 H115 L111 47 L104 78 L84 74 L92 46 H52 V38 H18 V37 H6 Z',
+          // Trigger guard opening
+          'M118 42 H132 L133 46 H119 Z',
+        ].join(' '),
+        'M58 30 H94 M114 32 H144 M156 35 L204 44 M90 56 L104 59',
+        '0 0 220 88',
+        className,
+      );
+
+    case 'sks':
+      return silhouettePath(
+        [
+          // Hooded front sight, folded bayonet under the barrel, fixed 10-rd belly magazine, wood stock
+          'M4 32 H12 V24 H18 V32 H52 V28 H60 L64 25 H104 V27 H146 L152 30 L166 36 L212 38 V60 L200 62 L164 48 L152 53 H122 L118 57 H98 L96 46 H60 V41 H14 V38 H4 Z',
+          // Trigger guard opening
+          'M124 46 H140 L142 50 H126 Z',
+        ].join(' '),
+        'M66 31 H102 M64 40 H94 M110 32 H142 M168 42 L206 48',
+        '0 0 220 88',
+        className,
+      );
+
+    case 'mini-14':
+      return silhouettePath(
+        [
+          // Blade front sight, short handguard over a sporting wood stock, 20-rd box magazine
+          'M6 32 H14 V25 H18 V32 H56 V30 H64 L68 27 H112 V24 H118 V27 H144 L150 30 L166 37 L212 39 V61 L200 62 L164 49 L152 54 H124 L120 50 L116 74 L102 72 L104 48 H66 L62 42 H56 V38 H6 Z',
+          // Trigger guard opening
+          'M126 46 H142 L144 51 H128 Z',
+        ].join(' '),
+        'M70 33 H140 M70 41 H100 M168 43 L206 49',
+        '0 0 220 88',
+        className,
+      );
+
+    case 'kar98k':
+      return silhouettePath(
+        [
+          // Full-length wood stock, tangent rear sight, flush magazine, straight wrist
+          'M4 31 H10 V25 H14 V31 H26 V29 H96 V26 H108 V28 H146 L152 31 L166 37 L212 39 V61 L200 62 L166 49 L154 53 H128 L126 49 H104 L100 44 H30 V40 H26 V37 H4 Z',
+          // Trigger guard opening
+          'M130 46 H144 L146 50 H132 Z',
+        ].join(' '),
+        'M34 34 H92 M40 29 V44 M70 29 V44 M112 33 H140 M141 34 L146 43 M168 43 L206 49',
+        '0 0 220 88',
+        className,
+      );
+
+    case 'mosin-nagant':
+      return silhouettePath(
+        [
+          // Long barrel, PSO-1 on a side mount, box magazine ahead of the trigger guard
+          'M2 31 H7 V26 H10 V31 H24 V29 H98 V27 H104 V12 H132 V9 H138 V12 H160 V22 H138 V28 H148 L154 31 L168 37 L212 39 V61 L200 62 L168 49 L156 53 H132 L130 49 H126 L124 58 H110 L108 46 H100 L98 44 H28 V40 H24 V37 H2 Z',
+          // Gap between scope and receiver, and the trigger guard opening
+          'M104 22 H122 V28 H104 Z M134 46 H146 L148 50 H136 Z',
+        ].join(' '),
+        'M30 34 H94 M44 29 V44 M76 29 V44 M108 17 H156 M170 43 L206 49',
+        '0 0 220 88',
+        className,
+      );
+
+    case 'dp-28':
+      return silhouettePath(
+        [
+          // Flared flash hider, perforated barrel shroud, bipod, flat pan magazine, wood butt
+          'M4 27 L14 31 H26 V29 H98 V24 H104 V17 H164 V24 H170 V28 L178 32 L212 36 V60 L202 62 L176 48 L166 56 H148 L144 46 H100 V42 H42 L32 72 H27 L35 42 H26 V37 H14 L4 41 Z',
+          // Trigger guard opening
+          'M150 48 H162 L164 52 H152 Z',
+        ].join(' '),
+        'M34 33 H40 M48 33 H54 M62 33 H68 M76 33 H82 M90 33 H94 M34 38 H40 M48 38 H54 M62 38 H68 M76 38 H82 M108 21 H160 M180 40 L206 46',
+        '0 0 220 88',
+        className,
+      );
+
+    case 'beretta-92fs':
+      return silhouettePath(
+        [
+          // Open-top slide with the barrel showing, rounded trigger guard, spur hammer
+          'M38 22 H44 V19 H50 L52 16 H56 L57 19 H150 L153 15 H161 L162 19 H168 L176 13 L180 16 L174 24 L184 28 L186 34 L178 37 L190 80 L193 83 L192 87 H160 L159 83 L162 80 L152 50 H120 L112 45 V39 H76 L72 36 H44 V31 H38 Z',
+          // Trigger guard window
+          'M120 39 H146 L148 46 H124 L117 42 Z',
+        ].join(' '),
+        'M44 31 H170 M60 23 H114 M140 22 L138 28 M145 22 L143 28 M150 22 L148 28 M155 22 L153 28 M160 22 L158 28 M158 52 H172 L183 77 H168 Z',
         '0 0 220 92',
         className,
       );

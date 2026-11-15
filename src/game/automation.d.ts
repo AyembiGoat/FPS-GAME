@@ -1,3 +1,4 @@
+import type { AttachmentId, AttachmentSlot } from '../core/attachments';
 import type { GameEvent, GameInput, GameState } from '../core/game';
 import type { MapId } from '../core/map';
 import type { GameModeId } from '../core/modes';
@@ -36,6 +37,14 @@ declare global {
       equipWeapon(weaponId: WeaponId, activeSlot?: WeaponSlot): GameState;
       /** Mount a specific optic on a firearm and refresh live weapon state. */
       setOptic(weaponId: WeaponId, opticId: OpticId): GameState;
+      /** Fit a part in one slot of a firearm (`null` empties the slot) and refresh live weapon state. */
+      setAttachment(
+        weaponId: WeaponId,
+        slot: AttachmentSlot,
+        attachmentId: AttachmentId | null,
+      ): GameState;
+      /** Set the player's health or boost meter directly, for reproducible HUD screenshots. */
+      setVitals(patch: { health?: number; boost?: number }): GameState;
       /** Read current WebGL draw-call / triangle / DPR telemetry. */
       renderStats(): { calls: number; triangles: number; geometries: number; pixelRatio: number };
       /** Read current persisted loadout. */

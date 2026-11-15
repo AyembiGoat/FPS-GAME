@@ -479,7 +479,8 @@ export function createViewmodel(
     },
 
     /** Trigger weapon recoil, muzzle flash, barrel smoke, and bolt/pump/slide animation. */
-    onShot(aimFraction: number, onActionEject?: () => void) {
+    /** `flashScale` shrinks the muzzle flash: 0 for a flash hider, about 0.3 for a suppressor. */
+    onShot(aimFraction: number, onActionEject?: () => void, flashScale = 1) {
       const t = active.tuning;
       const aimScale = THREE.MathUtils.lerp(1, 0.52, aimFraction);
       shotSign = -shotSign;
@@ -496,11 +497,13 @@ export function createViewmodel(
       camRollSpring.velocity += t.cameraRoll * shotSign * 30;
 
       // Multi-fin flash + local illumination pulse.
-      flashTime = 0.048;
-      active.flash.rotation.z = Math.random() * Math.PI * 2;
-      const s = t.flashScale * (0.85 + Math.random() * 0.32);
-      active.flash.scale.set(s, s, s * (0.9 + Math.random() * 0.25));
-      active.flash.visible = true;
+      if (flashScale > 0.02) {
+        flashTime = 0.048;
+        active.flash.rotation.z = Math.random() * Math.PI * 2;
+        const s = t.flashScale * flashScale * (0.85 + Math.random() * 0.32);
+        active.flash.scale.set(s, s, s * (0.9 + Math.random() * 0.25));
+        active.flash.visible = true;
+      }
 
       // Rising subtle muzzle smoke wisp.
       smokeLife = smokeMaxLife;

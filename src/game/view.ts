@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { GameEvent, GameState } from '../core/game';
+import { CONSUMABLES } from '../core/consumables';
 import { activeWeaponSpec } from '../core/game';
 import type { GameMap } from '../core/map';
 import { getGameModeSpec } from '../core/modes';
@@ -35,16 +36,27 @@ function zoomedFieldOfView(baseFov: number, zoom: number): number {
 function casingStyleFor(weaponId: WeaponId): 'pistol' | 'rifle' | 'heavy' | 'shotgun' {
   switch (weaponId) {
     case 'remington-870':
+    case 'saiga-12':
       return 'shotgun';
     case 'awm':
     case 'scar-h':
     case 'desert-eagle':
+    case 'kar98k':
+    case 'mosin-nagant':
+    case 'dp-28':
       return 'heavy';
     case 'hk416':
     case 'ak47':
+    case 'm16a4':
+    case 'aug-a3':
+    case 'sks':
+    case 'mini-14':
       return 'rifle';
     case 'mp5':
     case 'm1911':
+    case 'ump45':
+    case 'vector':
+    case 'beretta-92fs':
     default:
       return 'pistol';
   }
@@ -301,10 +313,14 @@ export function createView(initialMap: GameMap, audio: GameAudio) {
         switch (event.type) {
           case 'shot': {
             const shotWeaponId = event.weaponId;
-            viewmodel.onShot(state.weapon.aim, () => {
-              spawnWorldCasing(shotWeaponId);
-            });
-            audio.shot(shotWeaponId);
+            viewmodel.onShot(
+              state.weapon.aim,
+              () => {
+                spawnWorldCasing(shotWeaponId);
+              },
+              event.muzzleFlash,
+            );
+            audio.shot(shotWeaponId, event.suppressed);
 
             // Paint all pellet/bullet holes & dust, deduplicating simultaneous steel/surface/enemy audio.
             let playedSteel = false;
@@ -356,6 +372,29 @@ export function createView(initialMap: GameMap, audio: GameAudio) {
             flinchRoll = Math.max(-0.04, Math.min(0.04, flinchRoll - pan * 0.024));
             break;
           }
+          case 'armor-broken': {
+            if (event.entity.kind === 'player') {
+              audio.armourBreak(0);
+            } else if (event.entity.kind === 'enemy') {
+              const id = event.entity.id;
+              const struck = state.enemies.find((e) => e.id === id);
+              audio.armourBreak(
+                struck ? panOf({ x: struck.position.x, y: 1.2, z: struck.position.z }) : 0,
+              );
+            } else {
+              audio.armourBreak(0);
+            }
+            break;
+          }
+          case 'consumable-start':
+            audio.consumableStart(CONSUMABLES[event.id].kind);
+            break;
+          case 'consumable-complete':
+            audio.consumableComplete(CONSUMABLES[event.id].kind);
+            break;
+          case 'consumable-cancel':
+            audio.consumableCancel();
+            break;
           case 'mode-victory':
             audio.modeVictory();
             break;
@@ -512,7 +551,7 @@ export function createView(initialMap: GameMap, audio: GameAudio) {
       camera.position.set(eye.x, Math.max(0.45, eye.y + bob + landOffset + defeatDrop), eye.z);
       camera.rotation.set(
         pitch + state.weapon.recoil + camKick.pitch + flinchPitch,
-        yaw,
+        yaw + state.weapon.recoilYaw,
         -leanAmount * LEAN_ROLL + camKick.roll + flinchRoll + defeatRoll,
       );
 

@@ -34,20 +34,24 @@ interface AtmospherePreset {
   readonly outsideGroundColor: number;
 }
 
+const SHOOT_HOUSE_ATMOSPHERE: AtmospherePreset = {
+  sunElevationDeg: 31,
+  sunAzimuthDeg: -58,
+  turbidity: 6.0,
+  rayleigh: 1.7,
+  cloudCoverage: 0.32,
+  sunColor: 0xffd3a1,
+  sunIntensity: 4.6,
+  hemiSky: 0x9c8f7e,
+  hemiGround: 0xc9a67a,
+  fogColor: 0xe2d3bb,
+  outsideGroundColor: 0x9a8c6e,
+};
+
 const ATMOSPHERES: Readonly<Record<MapId, AtmospherePreset>> = {
-  'shoot-house': {
-    sunElevationDeg: 31,
-    sunAzimuthDeg: -58,
-    turbidity: 6.0,
-    rayleigh: 1.7,
-    cloudCoverage: 0.32,
-    sunColor: 0xffd3a1,
-    sunIntensity: 4.6,
-    hemiSky: 0x9c8f7e,
-    hemiGround: 0xc9a67a,
-    fogColor: 0xe2d3bb,
-    outsideGroundColor: 0x9a8c6e,
-  },
+  'shoot-house': SHOOT_HOUSE_ATMOSPHERE,
+  // The dummy-range test fixture borrows the Shoot House sky.
+  'test-dummy-range': SHOOT_HOUSE_ATMOSPHERE,
   'cargo-yard': {
     sunElevationDeg: 27,
     sunAzimuthDeg: 44,

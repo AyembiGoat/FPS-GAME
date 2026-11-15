@@ -308,6 +308,25 @@ const akWood: SurfaceRecipe = {
   },
 };
 
+/** Oil-finished dark walnut with long straight grain, for full-length rifle stocks. */
+const rifleWalnut: SurfaceRecipe = {
+  pixels: [128, 128],
+  tile: [0.22, 0.08],
+  relief: 0.0002,
+  metalness: 0,
+  texel(u, v, t, out) {
+    const warp = t.fbm(u, v, 2, 3, 3, 131) - 0.5;
+    const grain = t.fbm(u, v + warp * 0.1, 2, 44, 3, 132);
+    const figure = t.fbm(u + warp * 0.2, v, 2, 6, 2, 133);
+    const mixAmt = grain * 0.7 + figure * 0.3;
+    out.r = mix(52, 104, mixAmt);
+    out.g = mix(30, 62, mixAmt);
+    out.b = mix(18, 34, mixAmt);
+    out.height = mixAmt;
+    out.roughness = 0.5 + (1 - mixAmt) * 0.16;
+  },
+};
+
 /** Brushed satin stainless steel for the Desert Eagle .50 AE. */
 const stainlessSteel: SurfaceRecipe = {
   pixels: [128, 128],
@@ -626,6 +645,7 @@ export const RECIPES = {
   'polymer-black': polymerBlack,
   'anodized-fde': anodizedFde,
   'ak-wood': akWood,
+  'rifle-walnut': rifleWalnut,
   'stainless-steel': stainlessSteel,
   'chassis-od': chassisOd,
   walnut,

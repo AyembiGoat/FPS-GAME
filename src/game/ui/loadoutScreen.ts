@@ -1,3 +1,9 @@
+import {
+  ATTACHMENT_LIST,
+  ATTACHMENT_SLOT_LABEL,
+  ATTACHMENT_SLOTS,
+  attachmentFit,
+} from '../../core/attachments';
 import type { EffectiveWeaponSpec, WeaponCategory, WeaponId, WeaponSpec } from '../../core/weapon';
 import { effectiveWeaponSpec, getWeaponSpec, OPTICS, WEAPONS, weaponRpm } from '../../core/weapon';
 import type { GameAudio } from '../audio';
@@ -13,8 +19,10 @@ const CATEGORY_TABS: readonly { readonly id: CategoryTabId; readonly label: stri
   { id: 'all', label: 'All' },
   { id: 'assault', label: 'Assault' },
   { id: 'smg', label: 'SMG' },
+  { id: 'dmr', label: 'Marksman' },
   { id: 'shotgun', label: 'Shotgun' },
   { id: 'sniper', label: 'Sniper' },
+  { id: 'lmg', label: 'LMG' },
   { id: 'pistol', label: 'Pistols' },
 ];
 
@@ -32,10 +40,32 @@ const WEAPON_ROLES: Readonly<Record<WeaponId, string>> = {
     'Classic .45 ACP Government Model sidearm — crisp iron sights or slide-mounted Micro T-2 red dot with fast draw speed.',
   'desert-eagle':
     'Brushed stainless .50 AE magnum sidearm with top rail supporting iron sights, red dot, or a heavy 3.5× hunting ACOG.',
+  m16a4:
+    'Long-barrelled 5.56mm rifle that fires three-round bursts. Flat and accurate at range; slower than an automatic up close.',
+  'aug-a3':
+    'Bullpup 5.56mm rifle: a full-length barrel in a short gun. Steady recoil and a quick aim, with a slower magazine change.',
+  ump45:
+    'Slow-firing .45 ACP submachine gun. Heavier bullets and gentler recoil than the MP5, with a 25-round magazine.',
+  vector:
+    'The fastest-firing gun in the armoury. Empties its .45 ACP magazine in about a second and barely climbs.',
+  'saiga-12':
+    'Semi-automatic 12-gauge shotgun fed from a box magazine. Fires as fast as the trigger is pulled; each shell hits less hard than the pump gun.',
+  sks: 'Semi-automatic 7.62×39mm carbine with a ten-round fixed magazine. Two hits to an unarmoured chest at medium range.',
+  'mini-14':
+    'Light semi-automatic 5.56mm rifle with a 20-round magazine. Fast follow-up shots and the flattest path of the marksman rifles.',
+  kar98k:
+    'Bolt-action 7.92mm rifle holding five rounds. One hit to the head ends most fights; open sights or a scope.',
+  'mosin-nagant':
+    'Long bolt-action 7.62×54mmR rifle, fitted with the PSO-1 4× scope by default. The Kar98k’s equal with a longer reach.',
+  'dp-28':
+    'Light machine gun with a 47-round pan magazine. Slow, steady automatic fire; heavy to carry and slow to reload. Iron sights only.',
+  'beretta-92fs':
+    '9mm sidearm with a 15-round magazine. Lighter recoil and more shots than the .45, with less damage per hit.',
 };
 
 const FIRE_MODE_LABEL: Readonly<Record<WeaponSpec['fireMode'], string>> = {
   auto: 'Full-Auto',
+  burst: '3-Round Burst',
   semi: 'Semi-Auto',
   pump: 'Pump-Action',
   bolt: 'Bolt-Action',
@@ -109,7 +139,7 @@ export function createLoadoutScreen(
   const header = el('header', 'ui-screen__header loadout-header');
   const titleBlock = el('div', 'ui-screen__title-block');
   titleBlock.append(
-    el('span', 'ui-screen__eyebrow', 'Tactical Armory · 8 Weapons Ready'),
+    el('span', 'ui-screen__eyebrow', `Tactical Armory · ${WEAPONS.length} Weapons Ready`),
     el('h1', 'ui-screen__title', 'Loadout'),
   );
 
@@ -239,7 +269,20 @@ export function createLoadoutScreen(
   const payloadValue = el('span', 'loadout-stats__payload-value', '1 Round');
   payloadRow.append(payloadLabel, payloadValue);
 
-  statsPanel.append(statsHeader, statsList, payloadRow);
+  // Attachments: one row per slot the gun has. Parts that do not fit stay listed, greyed
+  // out, with the reason shown underneath on hover or focus.
+  const attachPanel = el('div', 'loadout-attach');
+  const attachHeader = el('div', 'loadout-attach__header');
+  attachHeader.append(
+    el('span', 'loadout-attach__title', 'Attachments'),
+    el('span', 'loadout-attach__note', ''),
+  );
+  const attachNote = attachHeader.lastElementChild as HTMLElement;
+  const attachRows = el('div', 'loadout-attach__rows');
+  const attachReason = el('p', 'loadout-attach__reason', '');
+  attachPanel.append(attachHeader, attachRows, attachReason);
+
+  statsPanel.append(statsHeader, statsList, attachPanel, payloadRow);
 
   const detailPane = el('div', 'loadout-detail');
   detailPane.append(stagePanel, statsPanel);
@@ -354,9 +397,13 @@ export function createLoadoutScreen(
   function syncInspector() {
     const loadout = store.get();
     const selectedOptic = store.opticFor(inspectedId);
-    const spec = effectiveWeaponSpec(inspectedId, selectedOptic);
+    const spec = effectiveWeaponSpec(inspectedId, selectedOptic, store.attachmentsFor(inspectedId));
     const equippedId = spec.slot === 'primary' ? loadout.primary : loadout.secondary;
-    const equippedSpec = effectiveWeaponSpec(equippedId, store.opticFor(equippedId));
+    const equippedSpec = effectiveWeaponSpec(
+      equippedId,
+      store.opticFor(equippedId),
+      store.attachmentsFor(equippedId),
+    );
     const isEquipped = equippedId === spec.id;
 
     stageSlotTag.textContent = spec.slot === 'primary' ? 'Primary Slot [1]' : 'Secondary Slot [2]';
@@ -387,6 +434,8 @@ export function createLoadoutScreen(
       });
       opticsPills.append(pill);
     }
+
+    renderAttachments(spec);
 
     equipBtn.replaceChildren();
     equipBtn.dataset.equipped = isEquipped ? 'true' : 'false';
@@ -456,6 +505,88 @@ export function createLoadoutScreen(
 
     syncCarryStrip();
     turntable.setWeapon(inspectedId, selectedOptic);
+  }
+
+  function renderAttachments(spec: EffectiveWeaponSpec) {
+    attachRows.replaceChildren();
+    const idleReason =
+      spec.attachmentSlots.length === 0
+        ? `${spec.name} takes no attachments.`
+        : 'Each part changes the numbers above. Greyed parts do not fit this gun.';
+    attachReason.textContent = idleReason;
+    const fittedCount = Object.keys(spec.attachments).length;
+    attachNote.textContent =
+      spec.attachmentSlots.length === 0
+        ? 'None'
+        : `${fittedCount} / ${spec.attachmentSlots.length} fitted`;
+
+    for (const slot of ATTACHMENT_SLOTS) {
+      if (!spec.attachmentSlots.includes(slot)) continue;
+      const row = el('div', 'loadout-attach__row');
+      row.dataset.slot = slot;
+      const label = el('span', 'loadout-attach__slot', ATTACHMENT_SLOT_LABEL[slot]);
+      const pills = el('div', 'loadout-attach__pills');
+      const fittedId = spec.attachments[slot] ?? null;
+
+      const makePill = (text: string, selected: boolean, onPick: (() => void) | null) => {
+        const pill = el('button', 'loadout-optic-pill loadout-attach__pill');
+        pill.type = 'button';
+        pill.textContent = text;
+        pill.dataset.selected = selected ? 'true' : 'false';
+        if (onPick) {
+          pill.addEventListener('pointerenter', () => {
+            audio.uiHover();
+          });
+          pill.addEventListener('click', () => {
+            audio.start();
+            audio.uiSelect();
+            onPick();
+          });
+        } else {
+          pill.setAttribute('aria-disabled', 'true');
+          pill.dataset.fits = 'false';
+        }
+        return pill;
+      };
+
+      const empty = makePill('None', fittedId === null, () => {
+        store.setAttachment(spec.id, slot, null);
+      });
+      empty.dataset.attachmentId = 'none';
+      pills.append(empty);
+
+      for (const part of ATTACHMENT_LIST) {
+        if (part.slot !== slot) continue;
+        const fit = attachmentFit(spec, part);
+        const pill = makePill(
+          part.shortName,
+          fittedId === part.id,
+          fit.fits
+            ? () => {
+                store.setAttachment(spec.id, slot, part.id);
+              }
+            : null,
+        );
+        pill.dataset.attachmentId = part.id;
+        const explain = fit.fits ? part.description : `${part.name}: ${fit.reason}.`;
+        pill.title = explain;
+        const show = () => {
+          attachReason.textContent = explain;
+          attachReason.dataset.tone = fit.fits ? 'info' : 'blocked';
+        };
+        const hide = () => {
+          attachReason.textContent = idleReason;
+          attachReason.dataset.tone = 'info';
+        };
+        pill.addEventListener('pointerenter', show);
+        pill.addEventListener('focus', show);
+        pill.addEventListener('pointerleave', hide);
+        pill.addEventListener('blur', hide);
+        pills.append(pill);
+      }
+      row.append(label, pills);
+      attachRows.append(row);
+    }
   }
 
   function inspectWeapon(id: WeaponId) {

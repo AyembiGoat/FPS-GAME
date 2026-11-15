@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { SIM_STEP_SECONDS } from './fixedLoop';
-import type { WeaponEvent, WeaponInput, WeaponState } from './weapon';
+import type { WeaponAttachments } from './attachments';
+import type { Loadout, WeaponEvent, WeaponId, WeaponInput, WeaponState } from './weapon';
 import {
   AK47,
   AWM,
@@ -8,18 +9,28 @@ import {
   currentOpticZoom,
   DEFAULT_LOADOUT,
   DESERT_EAGLE,
+  DP_28,
   effectiveWeaponSpec,
   equipLoadout,
   HK416,
+  M16A4,
   M1911,
+  MINI_14,
   MP5,
+  OPTIC_LIST,
   OPTICS,
   pelletDirections,
+  recoilYawPattern,
   REMINGTON_870,
+  SAIGA_12,
   SCAR_H,
+  SKS,
   stepWeapon,
+  VECTOR,
+  weaponProjectileDamage,
   WEAPONS,
   weaponRpm,
+  weaponShotDamage,
 } from './weapon';
 
 const dt = SIM_STEP_SECONDS;
@@ -55,11 +66,11 @@ function emptyMagazine(spec = M1911): WeaponState {
 }
 
 describe('weapon catalogue', () => {
-  it('defines 8 unique weapons across primary and secondary slots with sane values', () => {
-    expect(WEAPONS).toHaveLength(8);
-    expect(new Set(WEAPONS.map((w) => w.id)).size).toBe(8);
-    expect(WEAPONS.filter((w) => w.slot === 'primary')).toHaveLength(6);
-    expect(WEAPONS.filter((w) => w.slot === 'secondary')).toHaveLength(2);
+  it('defines 19 unique weapons across primary and secondary slots with sane values', () => {
+    expect(WEAPONS).toHaveLength(19);
+    expect(new Set(WEAPONS.map((w) => w.id)).size).toBe(19);
+    expect(WEAPONS.filter((w) => w.slot === 'primary')).toHaveLength(16);
+    expect(WEAPONS.filter((w) => w.slot === 'secondary')).toHaveLength(3);
     for (const spec of WEAPONS) {
       expect(spec.magazineSize).toBeGreaterThan(0);
       expect(spec.fireInterval).toBeGreaterThan(0);
@@ -71,6 +82,275 @@ describe('weapon catalogue', () => {
     expect(AWM.aimZoom).toBeGreaterThanOrEqual(5);
     expect(REMINGTON_870.pellets).toBe(8);
     expect(REMINGTON_870.pelletSpread).toBeGreaterThan(0);
+  });
+
+  it('matches the agreed damage table, counting every pellet of a shotgun shell', () => {
+    const table: Record<WeaponId, number> = {
+      hk416: 39,
+      ak47: 47,
+      'scar-h': 55,
+      mp5: 33,
+      m16a4: 41,
+      'aug-a3': 43,
+      ump45: 39,
+      vector: 32,
+      sks: 53,
+      'mini-14': 46,
+      kar98k: 79,
+      'mosin-nagant': 80,
+      'remington-870': 86,
+      'saiga-12': 75,
+      'dp-28': 51,
+      awm: 120,
+      m1911: 42,
+      'desert-eagle': 63,
+      'beretta-92fs': 33,
+    };
+    for (const spec of WEAPONS) {
+      expect(weaponShotDamage(spec), spec.id).toBeCloseTo(table[spec.id], 6);
+    }
+    expect(SAIGA_12.pellets).toBe(10);
+    expect(DP_28.magazineSize).toBe(47);
+  });
+
+  it('adds marksman and machine gun categories and keeps burst as the only new fire mode', () => {
+    expect(SKS.category).toBe('dmr');
+    expect(MINI_14.category).toBe('dmr');
+    expect(DP_28.category).toBe('lmg');
+    expect(new Set(WEAPONS.map((w) => w.fireMode))).toEqual(
+      new Set(['semi', 'auto', 'burst', 'pump', 'bolt']),
+    );
+    expect(WEAPONS.filter((w) => w.fireMode === 'burst').map((w) => w.id)).toEqual(['m16a4']);
+    expect(SAIGA_12.fireMode).toBe('semi');
+  });
+});
+
+describe('burst fire (M16A4)', () => {
+  it('fires exactly three rounds at 800 RPM from one pull, held or tapped', () => {
+    expect(M16A4.burstCount).toBe(3);
+    expect(weaponRpm(M16A4)).toBe(800);
+
+    const tapped = run(run(createWeapon(M16A4), fire, 1).state, idle, 60);
+    expect(tapped.events.filter((e) => e === 'shot')).toHaveLength(2);
+    expect(tapped.state.rounds).toBe(M16A4.magazineSize - 3);
+
+    const held = run(createWeapon(M16A4), fire, 120);
+    expect(held.events.filter((e) => e === 'shot')).toHaveLength(3);
+    expect(held.state.burstRemaining).toBe(0);
+  });
+
+  it('spaces the rounds of a burst by the burst interval', () => {
+    let state = createWeapon(M16A4);
+    const shotTicks: number[] = [];
+    for (let tick = 0; tick < 60; tick++) {
+      const step = stepWeapon(state, tick === 0 ? fire : idle, dt);
+      state = step.state;
+      if (step.events.includes('shot')) shotTicks.push(tick);
+    }
+    const gapTicks = Math.ceil(M16A4.burstInterval / dt);
+    expect(shotTicks).toEqual([0, gapTicks, gapTicks * 2]);
+  });
+
+  it('ignores a second pull in the middle of a burst', () => {
+    let state = run(createWeapon(M16A4), fire, 1).state;
+    let shots = 1;
+    // Hammer the trigger every other tick for the length of one burst and its recovery.
+    const ticks = Math.ceil((M16A4.burstInterval * 2 + M16A4.fireInterval) / dt) - 1;
+    for (let tick = 0; tick < ticks; tick++) {
+      const step = stepWeapon(state, tick % 2 === 0 ? idle : fire, dt);
+      state = step.state;
+      shots += step.events.filter((e) => e === 'shot').length;
+    }
+    expect(shots).toBe(3);
+  });
+
+  it('starts a new burst on the next pull and stops a burst when the magazine runs dry', () => {
+    let state = createWeapon(M16A4);
+    for (let burst = 0; burst < 10; burst++) {
+      state = run(run(state, fire, 1).state, idle, 40).state;
+    }
+    expect(state.rounds).toBe(0);
+
+    const short = { ...createWeapon(M16A4), rounds: 2 };
+    const emptied = run(short, fire, 60);
+    expect(emptied.events.filter((e) => e === 'shot')).toHaveLength(2);
+    expect(emptied.state.burstRemaining).toBe(0);
+  });
+});
+
+describe('sideways recoil', () => {
+  it('pushes the muzzle sideways in a fixed pattern that settles back to zero', () => {
+    const first = run(createWeapon(AK47), fire, 1).state;
+    expect(first.recoilYaw).toBeCloseTo(AK47.recoilHorizontal * recoilYawPattern(1), 9);
+    const again = run(createWeapon(AK47), fire, 1).state;
+    expect(again.recoilYaw).toBe(first.recoilYaw);
+    expect(Math.abs(run(first, idle, 240).state.recoilYaw)).toBeLessThan(1e-6);
+  });
+});
+
+describe('attachments', () => {
+  const kit = (weaponId: WeaponId, attachments: WeaponAttachments) =>
+    effectiveWeaponSpec(weaponId, undefined, attachments);
+
+  it('leaves a weapon unchanged with every slot empty', () => {
+    const bare = effectiveWeaponSpec('hk416', 'irons');
+    expect(bare.recoilKick).toBe(HK416.recoilKick);
+    expect(bare.magazineSize).toBe(HK416.magazineSize);
+    expect(bare.noiseRadiusScale).toBe(1);
+    expect(bare.muzzleFlashScale).toBe(1);
+    expect(bare.suppressed).toBe(false);
+    expect(bare.attachments).toEqual({});
+  });
+
+  it('applies each muzzle device as specified', () => {
+    const comp = kit('hk416', { muzzle: 'compensator' });
+    expect(comp.recoilKick).toBeCloseTo(HK416.recoilKick * 0.82, 9);
+    expect(comp.recoilHorizontal).toBe(HK416.recoilHorizontal);
+
+    const brake = kit('hk416', { muzzle: 'muzzle-brake' });
+    expect(brake.recoilHorizontal).toBeCloseTo(HK416.recoilHorizontal * 0.7, 9);
+    expect(brake.recoilKick).toBeCloseTo(HK416.recoilKick * 0.9, 9);
+
+    const hider = kit('hk416', { muzzle: 'flash-hider' });
+    expect(hider.muzzleFlashScale).toBe(0);
+    expect(hider.recoilRecovery).toBeGreaterThan(HK416.recoilRecovery);
+    expect(hider.suppressed).toBe(false);
+
+    const can = kit('hk416', { muzzle: 'suppressor' });
+    expect(can.noiseRadiusScale).toBeCloseTo(0.5, 9);
+    expect(can.muzzleFlashScale).toBeLessThan(0.5);
+    expect(can.suppressed).toBe(true);
+    expect(can.recoilKick).toBeGreaterThan(HK416.recoilKick);
+    expect(weaponProjectileDamage(can, 200, 'torso')).toBeLessThan(
+      weaponProjectileDamage(HK416, 200, 'torso'),
+    );
+    expect(weaponProjectileDamage(can, 5, 'torso')).toBe(weaponProjectileDamage(HK416, 5, 'torso'));
+
+    const choke = kit('remington-870', { muzzle: 'choke' });
+    expect(choke.pelletSpread).toBeCloseTo(REMINGTON_870.pelletSpread * 0.75, 9);
+  });
+
+  it('applies grips, magazines and stocks as specified', () => {
+    const base = effectiveWeaponSpec('hk416');
+    expect(kit('hk416', { grip: 'vertical-foregrip' }).recoilRecovery).toBeCloseTo(
+      HK416.recoilRecovery * 1.2,
+      9,
+    );
+    const angled = kit('hk416', { grip: 'angled-foregrip' });
+    expect(angled.aimTime).toBeCloseTo(base.aimTime * 0.85, 9);
+    expect(angled.recoilRecovery).toBeCloseTo(HK416.recoilRecovery * 1.05, 9);
+
+    expect(kit('hk416', { magazine: 'extended-mag' }).magazineSize).toBe(45);
+    expect(kit('hk416', { magazine: 'quickdraw-mag' }).reloadTime).toBeCloseTo(
+      HK416.reloadTime * 0.7,
+      9,
+    );
+    const both = kit('hk416', { magazine: 'extended-quickdraw-mag' });
+    expect(both.magazineSize).toBe(38);
+    expect(both.reloadTime).toBeCloseTo(HK416.reloadTime * 0.85, 9);
+
+    const awmBase = effectiveWeaponSpec('awm');
+    expect(kit('awm', { buttstock: 'cheek-pad' }).aimRecoilFactor).toBeCloseTo(
+      AWM.aimRecoilFactor * 0.6,
+      9,
+    );
+    expect(kit('awm', { buttstock: 'lightweight-stock' }).aimTime).toBeCloseTo(
+      awmBase.aimTime * 0.8,
+      9,
+    );
+  });
+
+  it('stacks one part per slot and drops parts that do not fit', () => {
+    const full = kit('hk416', {
+      muzzle: 'compensator',
+      grip: 'vertical-foregrip',
+      magazine: 'extended-mag',
+    });
+    expect(full.recoilKick).toBeCloseTo(HK416.recoilKick * 0.82, 9);
+    expect(full.recoilRecovery).toBeCloseTo(HK416.recoilRecovery * 1.2, 9);
+    expect(full.magazineSize).toBe(45);
+
+    // Grips are for assault rifles and SMGs; stocks for marksman and sniper rifles.
+    expect(kit('awm', { grip: 'vertical-foregrip' }).attachments).toEqual({});
+    expect(kit('hk416', { buttstock: 'cheek-pad' }).attachments).toEqual({});
+    expect(kit('hk416', { muzzle: 'choke' }).attachments).toEqual({});
+    expect(kit('dp-28', { muzzle: 'suppressor', magazine: 'extended-mag' }).attachments).toEqual(
+      {},
+    );
+    expect(kit('kar98k', { magazine: 'extended-mag' }).attachments).toEqual({});
+  });
+
+  it('loads the larger magazine, carries the parts on the weapon state and refills on change', () => {
+    const loadout: Loadout = {
+      primary: 'hk416',
+      secondary: 'm1911',
+      attachments: { hk416: { magazine: 'extended-mag', muzzle: 'suppressor' } },
+    };
+    const weapon = createWeapon(loadout);
+    expect(weapon.rounds).toBe(45);
+    expect(weapon.attachments).toEqual({ magazine: 'extended-mag', muzzle: 'suppressor' });
+
+    const emptied = run(weapon, fire, stepsFor(45 * HK416.fireInterval) + 30);
+    expect(emptied.events.filter((e) => e === 'shot')).toHaveLength(45);
+    const reloaded = run(emptied.state, reload, stepsFor(HK416.reloadTime) + 6);
+    expect(reloaded.state.rounds).toBe(45);
+
+    const stripped = equipLoadout(weapon, { primary: 'hk416', secondary: 'm1911' });
+    expect(stripped.rounds).toBe(30);
+    expect(stripped.attachments).toEqual({});
+
+    const switched = run(weapon, { ...idle, switchSlot: 'secondary' }, 1).state;
+    expect(switched.attachments).toEqual({});
+  });
+
+  it('reloads faster with a quickdraw magazine', () => {
+    const loadout: Loadout = {
+      primary: 'hk416',
+      secondary: 'm1911',
+      attachments: { hk416: { magazine: 'quickdraw-mag' } },
+    };
+    const started = run({ ...createWeapon(loadout), rounds: 3 }, reload, 1).state;
+    const almostBase = run(started, idle, Math.floor((HK416.reloadTime * 0.7) / dt) + 1);
+    expect(almostBase.events).toContain('reload-end');
+  });
+});
+
+describe('PSO-1 and PM II 8× optics', () => {
+  it('adds exactly two fixed-power optics', () => {
+    expect(OPTIC_LIST.map((o) => o.id)).toEqual([
+      'irons',
+      'red-dot',
+      'holo',
+      'acog',
+      'pso-1',
+      'lpvo',
+      'pm2-8x',
+      'sniper-scope',
+    ]);
+    expect(OPTICS['pso-1'].zoomStages).toEqual([4.0]);
+    expect(OPTICS['pm2-8x'].zoomStages).toEqual([8.0]);
+  });
+
+  it('fits assault, marksman and sniper rifles only', () => {
+    for (const spec of WEAPONS) {
+      const scoped =
+        spec.category === 'assault' || spec.category === 'dmr' || spec.category === 'sniper';
+      expect(spec.compatibleOptics.includes('pso-1'), spec.id).toBe(scoped);
+      expect(spec.compatibleOptics.includes('pm2-8x'), spec.id).toBe(scoped);
+    }
+    for (const shotgun of [REMINGTON_870, SAIGA_12]) {
+      expect([...shotgun.compatibleOptics]).toEqual(['irons', 'red-dot', 'holo']);
+    }
+    expect(VECTOR.compatibleOptics).not.toContain('pso-1');
+    expect(VECTOR.compatibleOptics).not.toContain('pm2-8x');
+  });
+
+  it('has a single magnification that the zoom toggle leaves alone', () => {
+    const loadout: Loadout = { primary: 'sks', secondary: 'm1911', optics: { sks: 'pm2-8x' } };
+    const toggled = run(createWeapon(loadout), { ...idle, toggleZoom: true }, 1);
+    expect(toggled.events).not.toContain('zoom-toggle');
+    expect(currentOpticZoom(effectiveWeaponSpec('sks', 'pm2-8x'), toggled.state.zoomStage)).toBe(8);
+    expect(effectiveWeaponSpec('sks', 'pso-1').aimZoom).toBe(4);
   });
 });
 

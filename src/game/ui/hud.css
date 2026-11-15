@@ -42,6 +42,25 @@
   );
 }
 
+/* PSO-1: a narrow, fully blacked-out tube with a faint warm cast from the old coatings */
+.hud-scope[data-style='pso'] {
+  background:
+    radial-gradient(
+      circle at 50% 50%,
+      rgba(206, 178, 96, 0.05) 0%,
+      rgba(206, 178, 96, 0.07) 34vmin,
+      rgba(0, 0, 0, 0) 36vmin
+    ),
+    radial-gradient(
+      circle at 50% 50%,
+      rgba(0, 0, 0, 0) 0%,
+      rgba(0, 0, 0, 0) 36.2vmin,
+      rgba(6, 8, 9, 0.5) 38.8vmin,
+      rgba(3, 4, 5, 0.98) 40.6vmin,
+      #020303 42.5vmin
+    );
+}
+
 /* Vortex Razor LPVO: ultra-thin tactical bezel preserving clean peripheral awareness */
 .hud-scope[data-style='lpvo'] {
   background: radial-gradient(
@@ -408,6 +427,11 @@
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+/* The combat vitals card is taller (boost, armour, items), so the pills sit above it. */
+.hud-layer[data-survival='true'] .hud-stance {
+  bottom: calc(var(--ui-safe-y) + 164px);
 }
 
 .hud-stance__pill {
@@ -1162,6 +1186,288 @@
 }
 
 .hud-vitals[data-state='critical'] .hud-vitals__seg[data-filled='true'] {
+  background: var(--ui-danger);
+}
+
+/* Boost meter */
+.hud-boost {
+  position: relative;
+  height: 3px;
+  border-radius: 1px;
+  background: rgba(230, 238, 248, 0.12);
+  margin-top: -3px;
+}
+
+.hud-boost__fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 1px;
+  background: rgba(229, 169, 60, 0.55);
+  transition:
+    width var(--ui-dur-base) linear,
+    background-color var(--ui-dur-fast) linear;
+}
+
+.hud-boost[data-healing='true'] .hud-boost__fill {
+  background: var(--ui-accent);
+}
+
+.hud-boost__notch {
+  position: absolute;
+  top: -2px;
+  width: 1px;
+  height: 7px;
+  background: rgba(230, 238, 248, 0.42);
+}
+
+/* Armour cells */
+.hud-armour {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.hud-armour__cell {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--ui-font-display);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ui-ink-secondary);
+}
+
+.hud-armour__level {
+  color: var(--ui-ink-primary);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.hud-armour__track {
+  height: 4px;
+  border-radius: 1px;
+  background: rgba(230, 238, 248, 0.14);
+  overflow: hidden;
+}
+
+.hud-armour__fill {
+  height: 100%;
+  width: 0%;
+  background: #8fb4d8;
+  transition: width var(--ui-dur-fast) linear;
+}
+
+.hud-armour__cell[data-state='worn'] .hud-armour__fill {
+  background: var(--ui-warning);
+}
+
+.hud-armour__cell[data-state='none'],
+.hud-armour__cell[data-state='broken'] {
+  color: var(--ui-ink-muted);
+}
+
+.hud-armour__cell[data-state='none'] .hud-armour__level {
+  color: var(--ui-ink-muted);
+}
+
+.hud-armour__cell[data-state='broken'] .hud-armour__level {
+  color: var(--ui-danger);
+}
+
+/* Item tray */
+.hud-items {
+  display: grid;
+  grid-template-columns: repeat(5, auto);
+  gap: 5px;
+  padding-top: 7px;
+  border-top: 1px solid var(--ui-edge-subtle);
+}
+
+.hud-item {
+  display: grid;
+  grid-template-columns: auto auto;
+  grid-template-areas:
+    'key count'
+    'name name';
+  align-items: center;
+  justify-content: space-between;
+  column-gap: 6px;
+  row-gap: 3px;
+  min-width: 62px;
+  padding: 4px 6px 4px 4px;
+  border-radius: 2px;
+  border: 1px solid var(--ui-edge-subtle);
+  background: rgba(230, 238, 248, 0.04);
+  transition:
+    border-color var(--ui-dur-fast) linear,
+    background-color var(--ui-dur-fast) linear,
+    opacity var(--ui-dur-fast) linear;
+}
+
+.hud-item .ui-keycap {
+  grid-area: key;
+}
+
+.hud-item__count {
+  grid-area: count;
+  font-family: var(--ui-font-display);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--ui-ink-primary);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.hud-item__name {
+  grid-area: name;
+  font-family: var(--ui-font-display);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--ui-ink-secondary);
+}
+
+.hud-item[data-empty='true'] {
+  opacity: 0.38;
+}
+
+.hud-item[data-using='true'] {
+  border-color: var(--ui-confirm);
+  background: var(--ui-confirm-soft);
+}
+
+.hud-item[data-kind='boost'][data-using='true'] {
+  border-color: var(--ui-accent);
+  background: var(--ui-accent-soft);
+}
+
+/* Item-in-use progress, under the crosshair */
+.hud-use {
+  position: fixed;
+  left: 50%;
+  top: calc(50% + 96px);
+  width: 264px;
+  transform: translate(-50%, 6px) scale(var(--ui-hud-scale));
+  opacity: 0;
+  padding: 8px 12px 9px;
+  border-radius: 2px;
+  background: rgba(10, 14, 20, 0.84);
+  border: 1px solid var(--ui-edge-strong);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.42);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition:
+    opacity var(--ui-dur-fast) var(--ui-ease-out),
+    transform var(--ui-dur-fast) var(--ui-ease-out);
+}
+
+.hud-use[data-open='true'] {
+  opacity: 1;
+  transform: translate(-50%, 0) scale(var(--ui-hud-scale));
+}
+
+.hud-use__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-family: var(--ui-font-display);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ui-ink-primary);
+}
+
+.hud-use__time {
+  color: var(--ui-ink-secondary);
+}
+
+.hud-use__track {
+  height: 4px;
+  border-radius: 1px;
+  background: rgba(230, 238, 248, 0.14);
+  overflow: hidden;
+}
+
+.hud-use__fill {
+  height: 100%;
+  width: 100%;
+  background: var(--ui-confirm);
+  transform-origin: left center;
+  transform: scaleX(0);
+}
+
+.hud-use[data-kind='boost'] .hud-use__fill {
+  background: var(--ui-accent);
+}
+
+.hud-use__hint {
+  font-family: var(--ui-font-sans);
+  font-size: 11px;
+  color: var(--ui-ink-muted);
+}
+
+/* Health of the hurt target under the sights */
+.hud-target-health {
+  position: fixed;
+  left: 50%;
+  top: calc(50% - 92px);
+  width: 204px;
+  transform: translate(-50%, 0) scale(var(--ui-hud-scale));
+  opacity: 0;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 9px;
+  border-radius: 2px;
+  background: rgba(10, 14, 20, 0.78);
+  border: 1px solid var(--ui-edge-subtle);
+  font-family: var(--ui-font-display);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ui-ink-secondary);
+  transition: opacity var(--ui-dur-fast) var(--ui-ease-out);
+}
+
+.hud-target-health[data-open='true'] {
+  opacity: 1;
+}
+
+.hud-target-health__num {
+  min-width: 24px;
+  text-align: right;
+  font-size: 15px;
+  color: var(--ui-ink-primary);
+}
+
+.hud-target-health__track {
+  height: 5px;
+  border-radius: 1px;
+  background: rgba(230, 238, 248, 0.16);
+  overflow: hidden;
+}
+
+.hud-target-health__fill {
+  height: 100%;
+  width: 100%;
+  background: #e6ecf4;
+  transition: width var(--ui-dur-fast) linear;
+}
+
+.hud-target-health[data-state='hurt'] .hud-target-health__fill {
+  background: var(--ui-warning);
+}
+
+.hud-target-health[data-state='critical'] .hud-target-health__fill {
   background: var(--ui-danger);
 }
 

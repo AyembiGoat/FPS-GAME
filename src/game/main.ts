@@ -265,6 +265,26 @@ function play(runMode: 'auto' | 'bot' | 'play') {
         drawCurrent(0);
         return state;
       },
+      setAttachment: (weaponId, slot, attachmentId) => {
+        loadout.setAttachment(weaponId, slot, attachmentId);
+        state = setGameLoadout(state, loadout.get(), state.weapon.activeSlot);
+        previous = state;
+        drawCurrent(0);
+        return state;
+      },
+      setVitals: (patch) => {
+        state = {
+          ...state,
+          playerHealth: Math.max(
+            1,
+            Math.min(state.playerMaxHealth, patch.health ?? state.playerHealth),
+          ),
+          playerBoost: Math.max(0, Math.min(100, patch.boost ?? state.playerBoost)),
+        };
+        previous = state;
+        drawCurrent(0);
+        return state;
+      },
       renderStats: () => view.renderStats(),
       loadout: () => loadout.get(),
       inspectLoadout: (weaponId) => {

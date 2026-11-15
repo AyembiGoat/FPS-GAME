@@ -1,8 +1,10 @@
 import type { Box } from './collision';
+import type { ArmourLevel } from './damage';
 import type { Vec3 } from './vec';
 import type { WeaponId } from './weapon';
 
-export type MapId = 'shoot-house' | 'cargo-yard';
+/** `test-dummy-range` is a test fixture: it is never listed in menus or accepted from a URL. */
+export type MapId = 'shoot-house' | 'cargo-yard' | 'test-dummy-range';
 
 export type SurfaceMaterial =
   | 'floor'
@@ -25,6 +27,15 @@ export interface TargetSpawn {
   readonly position: Vec3;
   /** Unit vector along X or Z that the front of the plate faces. */
   readonly facing: { readonly x: -1 | 0 | 1; readonly z: -1 | 0 | 1 };
+  /**
+   * When set, the target is a damageable dummy with this much health instead of a steel plate
+   * that drops to any hit.
+   */
+  readonly health?: number;
+  /** Vest level worn by a dummy (0–3). Ignored on steel plates. */
+  readonly vest?: ArmourLevel;
+  /** Helmet level worn by a dummy (0–3). Ignored on steel plates. */
+  readonly helmet?: ArmourLevel;
 }
 
 export type EnemyArchetype = 'assaulter' | 'breacher' | 'marksman';
@@ -37,6 +48,10 @@ export interface EnemySpawn {
   readonly yaw: number;
   /** Ordered patrol / reposition waypoints on the floor (y = 0). */
   readonly patrol: readonly Vec3[];
+  /** Vest level worn (0–3); none when omitted. */
+  readonly vest?: ArmourLevel;
+  /** Helmet level worn (0–3); none when omitted. */
+  readonly helmet?: ArmourLevel;
 }
 
 export interface MapMarkerSpec {
