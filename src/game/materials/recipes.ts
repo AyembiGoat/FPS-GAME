@@ -505,6 +505,26 @@ const corduraCrimson: SurfaceRecipe = {
   },
 };
 
+/** Olive drab woven nylon for medical pouches and plate carriers lying as loot. */
+const corduraOlive: SurfaceRecipe = {
+  pixels: [128, 128],
+  tile: [0.05, 0.05],
+  relief: 0.00025,
+  metalness: 0,
+  texel(u, v, t, out) {
+    const weaveU = Math.abs(Math.sin(u * Math.PI * 36));
+    const weaveV = Math.abs(Math.sin(v * Math.PI * 36));
+    const weave = weaveU * 0.5 + weaveV * 0.5;
+    const dirt = (t.fbm(u, v, 5, 5, 3, 191) - 0.5) * 0.16;
+    const tone = 0.86 + weave * 0.16 + dirt;
+    out.r = 88 * tone;
+    out.g = 92 * tone;
+    out.b = 58 * tone;
+    out.height = weave;
+    out.roughness = 0.88;
+  },
+};
+
 /** Dark compacted port-terminal asphalt with limestone aggregate grit, roller wear, and joint tar seams. */
 const asphaltFloor: SurfaceRecipe = {
   pixels: [1024, 1024],
@@ -653,4 +673,5 @@ export const RECIPES = {
   sleeve,
   'opfor-cloth': opforCloth,
   'cordura-crimson': corduraCrimson,
+  'cordura-olive': corduraOlive,
 } satisfies Record<string, SurfaceRecipe>;

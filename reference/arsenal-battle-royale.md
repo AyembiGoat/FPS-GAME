@@ -93,7 +93,9 @@ barrel.
   armoury and in Practice. Adding them to the ladder would lengthen every run and is a
   separate balance decision.
 - **Enemies still carry the original guns** (HK416, AK-47, SCAR-H, MP5, Remington 870).
-- **Armour and healing items are handed out at the start of a Gun Game run** (level 1 vest
-  and helmet, a fixed kit of items). There is no loot, so nothing better can be picked up.
+- **Nothing is carried at the start of a run.** Vests, helmets and healing and boost items lie
+  on crates around each map and are picked up with F (`src/core/loot.ts`; each map lists its
+  own in `loot`). Better armour replaces what is worn; armour that is no better is refused.
+  Item photos used for the models are in `reference/arsenal/loot/`.
 - **Practice has no armour, items or vitals card**, because nothing there can hurt the player.
 - **No inventory limits, ammunition types or bullet drop.**

@@ -84,6 +84,8 @@ export function createView(initialMap: GameMap, audio: GameAudio) {
   renderer.setPixelRatio(resolution);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.autoUpdate = false;
+  // A frame is two passes (world, then the gun in hand); count both, not just the last.
+  renderer.info.autoReset = false;
   let shadowsStale = true;
   let shadowCooldown = 0;
   let actorsWereMoving = false;
@@ -220,7 +222,7 @@ export function createView(initialMap: GameMap, audio: GameAudio) {
   return {
     canvas: renderer.domElement,
 
-    /** Expose active draw call & geometry stats for performance verification. */
+    /** Draw calls and triangles of the last whole frame: world, shadows and the gun in hand. */
     renderStats() {
       return {
         calls: renderer.info.render.calls,
@@ -395,6 +397,12 @@ export function createView(initialMap: GameMap, audio: GameAudio) {
           case 'consumable-cancel':
             audio.consumableCancel();
             break;
+          case 'loot-taken':
+            audio.lootPickup(event.item.kind === 'armour' ? 'armour' : 'item');
+            break;
+          case 'loot-refused':
+            audio.consumableCancel();
+            break;
           case 'mode-victory':
             audio.modeVictory();
             break;
@@ -486,6 +494,7 @@ export function createView(initialMap: GameMap, audio: GameAudio) {
         shadowsStale = false;
         shadowCooldown = SHADOW_UPDATE_INTERVAL;
       }
+      renderer.info.reset();
       renderer.clear();
       renderer.render(world.scene, camera);
     },
@@ -621,6 +630,11 @@ export function createView(initialMap: GameMap, audio: GameAudio) {
       for (const target of world.targets) {
         if (target.update(dt)) anyActorMoving = true;
       }
+      // An item that appears or is picked up changes the shadows once, at once.
+      if (world.loot.sync(state.lootTaken)) {
+        shadowsStale = true;
+        shadowCooldown = 0;
+      }
       if (anyActorMoving) {
         shadowsStale = true;
       } else if (actorsWereMoving) {
@@ -638,6 +652,7 @@ export function createView(initialMap: GameMap, audio: GameAudio) {
         shadowsStale = false;
         shadowCooldown = SHADOW_UPDATE_INTERVAL;
       }
+      renderer.info.reset();
       renderer.clear();
       renderer.render(world.scene, camera);
       if (!hideModelForScope) {

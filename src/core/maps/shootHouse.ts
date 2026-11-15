@@ -1,3 +1,4 @@
+import type { LootItem, LootSpawn } from '../loot';
 import type { GameMap, MapSolid, SurfaceMaterial } from '../map';
 
 const PLY_HEIGHT = 2.65;
@@ -76,6 +77,11 @@ function crate(x: number, z: number, stack = 0): MapSolid {
   const half = CRATE / 2;
   const bottom = stack * CRATE;
   return box(x - half, bottom, z - half, x + half, bottom + CRATE, z + half, 'crate');
+}
+
+/** An item resting on top of the single crate centred at `(x, z)`. */
+function onCrate(id: string, x: number, z: number, item: LootItem): LootSpawn {
+  return { id, item, position: { x, y: CRATE, z } };
 }
 
 /** Low concrete jersey barrier for waist-high cover and leaning engagements. */
@@ -450,5 +456,23 @@ export const shootHouse: GameMap = {
         { x: 27.6, y: 0, z: -23.2 },
       ],
     },
+  ],
+
+  // Ground loot for combat modes. The first few lie on the way in from the spawn; the level 2
+  // armour and the med kit are deep in the compound.
+  loot: [
+    onCrate('sh-loot-01', 11.0, 21.4, { kind: 'consumable', id: 'bandage', count: 5 }),
+    onCrate('sh-loot-02', 9.6, 13.6, { kind: 'armour', piece: 'helmet', level: 1 }),
+    onCrate('sh-loot-03', -0.6, 2.2, { kind: 'armour', piece: 'vest', level: 1 }),
+    onCrate('sh-loot-04', 30.4, 20.8, { kind: 'consumable', id: 'energy-drink', count: 2 }),
+    onCrate('sh-loot-05', -1.2, -11.2, { kind: 'consumable', id: 'first-aid', count: 1 }),
+    onCrate('sh-loot-06', -9.4, -13.6, { kind: 'consumable', id: 'bandage', count: 5 }),
+    onCrate('sh-loot-07', -15.2, -9.4, { kind: 'consumable', id: 'painkiller', count: 1 }),
+    onCrate('sh-loot-08', -25.8, -9.2, { kind: 'armour', piece: 'vest', level: 2 }),
+    onCrate('sh-loot-09', 6.8, -20.4, { kind: 'consumable', id: 'med-kit', count: 1 }),
+    onCrate('sh-loot-10', -7.4, -20.4, { kind: 'consumable', id: 'first-aid', count: 1 }),
+    onCrate('sh-loot-11', 31.4, -20.8, { kind: 'armour', piece: 'helmet', level: 2 }),
+    onCrate('sh-loot-12', -15.0, -22.8, { kind: 'consumable', id: 'energy-drink', count: 1 }),
+    onCrate('sh-loot-13', -33.2, -17.5, { kind: 'consumable', id: 'bandage', count: 5 }),
   ],
 };

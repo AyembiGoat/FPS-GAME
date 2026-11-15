@@ -394,7 +394,11 @@ export function createBot(map: GameMap): Bot {
   return (state) => {
     const modeSpec = getGameModeSpec(state.mode);
     if (modeSpec.usesEnemies) {
-      return stepEnemyCombatBot(state);
+      // Takes whatever lies within reach in passing; it never goes out of its way for loot.
+      const input = stepEnemyCombatBot(state);
+      return state.nearbyLoot !== null && state.nearbyLootRefusal === null
+        ? { ...input, interact: true }
+        : input;
     }
 
     // Target Range mode (`range`): steel silhouette clearing loop.

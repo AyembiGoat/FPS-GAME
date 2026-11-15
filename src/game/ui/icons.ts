@@ -27,7 +27,15 @@ export type IconName =
   | 'target'
   | 'mouseLeft'
   | 'mouseRight'
-  | 'mouseMove';
+  | 'mouseMove'
+  | 'heart'
+  | 'helmet'
+  | 'vest'
+  | 'bandage'
+  | 'firstAid'
+  | 'medKit'
+  | 'energyDrink'
+  | 'painkiller';
 
 function svgRoot(viewBox: string, className?: string): SVGSVGElement {
   const svg = document.createElementNS(SVG_NS, 'svg');
@@ -191,6 +199,61 @@ export function createIcon(name: IconName, className = 'ui-icon'): SVGSVGElement
         strokePath('M6.2 7.8a3.8 3.8 0 0 1 7.6 0v4.4a3.8 3.8 0 0 1-7.6 0V7.8Z'),
         strokePath('M10 4v3.2'),
         strokePath('M2.5 10h1.8M15.7 10h1.8'),
+      );
+      break;
+    case 'heart':
+      svg.append(
+        strokePath(
+          'M10 16.2S3.6 12.3 3.6 7.9A3.4 3.4 0 0 1 10 6.3a3.4 3.4 0 0 1 6.4 1.6c0 4.4-6.4 8.3-6.4 8.3Z',
+        ),
+      );
+      break;
+    case 'helmet':
+      svg.append(
+        strokePath('M3.4 12.6a6.6 6.6 0 0 1 13.2 0v1.2H3.4v-1.2Z'),
+        strokePath('M3.4 13.8h14.2M6.4 13.8v2.6M8.2 6.6v7.2'),
+      );
+      break;
+    case 'vest':
+      svg.append(
+        strokePath(
+          'M6.4 3.4L4.2 5.6v10.8h11.6V5.6l-2.2-2.2c-.5 1.7-1.9 2.8-3.6 2.8S6.9 5.1 6.4 3.4Z',
+        ),
+        strokePath('M6.6 10.2h6.8M6.6 13h6.8'),
+      );
+      break;
+    case 'bandage':
+      svg.append(
+        strokePath('M9 4.4a4.4 4.4 0 1 0 0 8.8 4.4 4.4 0 0 0 0-8.8Z'),
+        strokePath('M9 7.4a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8Z'),
+        strokePath('M9 13.2h7.6v2.6H11'),
+      );
+      break;
+    case 'firstAid':
+      svg.append(
+        strokePath('M4.6 6.4h10.8v10H4.6z'),
+        strokePath('M7.6 6.4V4.2h4.8v2.2'),
+        strokePath('M10 9.2v4.4M7.8 11.4h4.4'),
+      );
+      break;
+    case 'medKit':
+      svg.append(
+        strokePath('M2.6 7h14.8v9.4H2.6z'),
+        strokePath('M7 7V4.6h6V7M5.2 7v9.4M14.8 7v9.4'),
+        strokePath('M10 9.4v4.6M7.7 11.7h4.6'),
+      );
+      break;
+    case 'energyDrink':
+      svg.append(
+        strokePath('M6.8 5.4h6.4v11.2H6.8z'),
+        strokePath('M7.8 5.4l.7-2h3l.7 2'),
+        strokePath('M10.8 8l-1.8 3h2l-1.8 3'),
+      );
+      break;
+    case 'painkiller':
+      svg.append(
+        strokePath('M5.9 14.1a3 3 0 0 1 0-4.2l4-4a3 3 0 0 1 4.2 4.2l-4 4a3 3 0 0 1-4.2 0Z'),
+        strokePath('M7.9 7.9l4.2 4.2'),
       );
       break;
   }

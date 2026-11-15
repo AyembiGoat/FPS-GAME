@@ -52,8 +52,9 @@ const CONTROL_SECTIONS: readonly ControlSectionSpec[] = [
     ],
   },
   {
-    title: 'Healing & Boosts',
+    title: 'Items',
     rows: [
+      { action: 'Pick up the item within reach', bindings: [{ kind: 'key', label: 'F' }] },
       { action: 'Heal (best item for your health)', bindings: [{ kind: 'key', label: 'H' }] },
       { action: 'Boost (energy drink or painkillers)', bindings: [{ kind: 'key', label: 'B' }] },
       { action: 'Med Kit', bindings: [{ kind: 'key', label: '7' }] },

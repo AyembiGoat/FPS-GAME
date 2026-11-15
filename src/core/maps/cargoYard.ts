@@ -1,3 +1,4 @@
+import type { LootItem, LootSpawn } from '../loot';
 import type { GameMap, MapSolid, SurfaceMaterial } from '../map';
 
 const BRICK_HEIGHT = 3.25;
@@ -60,6 +61,11 @@ function crate(x: number, z: number, stack = 0): MapSolid {
   const half = CRATE / 2;
   const bottom = stack * CRATE;
   return box(x - half, bottom, z - half, x + half, bottom + CRATE, z + half, 'crate');
+}
+
+/** An item resting on top of the single crate centred at `(x, z)`. */
+function onCrate(id: string, x: number, z: number, item: LootItem): LootSpawn {
+  return { id, item, position: { x, y: CRATE, z } };
 }
 
 /** Waist-high port concrete bollard / Jersey barrier. */
@@ -433,5 +439,21 @@ export const cargoYard: GameMap = {
         { x: 30.0, y: 0, z: -25.2 },
       ],
     },
+  ],
+
+  // Ground loot for combat modes. The first few lie on the way in from the spawn; the level 2
+  // armour and the med kit are at the far end of the yard.
+  loot: [
+    onCrate('cy-loot-01', -12.6, 23.6, { kind: 'consumable', id: 'bandage', count: 5 }),
+    onCrate('cy-loot-02', 10.8, 0.4, { kind: 'armour', piece: 'helmet', level: 1 }),
+    onCrate('cy-loot-03', -2.4, -14.2, { kind: 'armour', piece: 'vest', level: 1 }),
+    onCrate('cy-loot-04', 33.2, 22.2, { kind: 'consumable', id: 'energy-drink', count: 2 }),
+    onCrate('cy-loot-05', 11.4, -14.2, { kind: 'consumable', id: 'first-aid', count: 1 }),
+    onCrate('cy-loot-06', -16.8, -10.2, { kind: 'consumable', id: 'painkiller', count: 1 }),
+    onCrate('cy-loot-07', -8.2, -22.0, { kind: 'consumable', id: 'bandage', count: 5 }),
+    onCrate('cy-loot-08', 8.0, -22.0, { kind: 'consumable', id: 'med-kit', count: 1 }),
+    onCrate('cy-loot-09', -16.2, -24.6, { kind: 'armour', piece: 'vest', level: 2 }),
+    onCrate('cy-loot-10', 33.4, -22.6, { kind: 'armour', piece: 'helmet', level: 2 }),
+    onCrate('cy-loot-11', -35.0, -18.5, { kind: 'consumable', id: 'first-aid', count: 1 }),
   ],
 };

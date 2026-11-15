@@ -3,6 +3,8 @@ import { Sky } from 'three/addons/objects/Sky.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { TARGET } from '../core/game';
 import type { GameMap, MapId, SurfaceMaterial } from '../core/map';
+import type { LootView } from './loot';
+import { buildLoot } from './loot';
 import type { SurfaceName } from './materials';
 import { applySurface, surface } from './materials';
 
@@ -460,6 +462,7 @@ function buildTargets(
 export interface World {
   readonly scene: THREE.Scene;
   readonly targets: readonly TargetView[];
+  readonly loot: LootView;
   /** Unit vector pointing from the ground toward the sun. */
   readonly sunDirection: THREE.Vector3;
   dispose(): void;
@@ -556,10 +559,12 @@ export function buildWorld(map: GameMap, renderer: THREE.WebGLRenderer): World {
   scene.add(...solidMeshes);
   const disposeMarkings = buildRangeMarkings(map, scene);
   const builtTargets = buildTargets(map, scene);
+  const loot = buildLoot(map, scene);
 
   return {
     scene,
     targets: builtTargets.targets,
+    loot,
     sunDirection,
     dispose() {
       for (const m of solidMeshes) {
@@ -568,6 +573,7 @@ export function buildWorld(map: GameMap, renderer: THREE.WebGLRenderer): World {
       }
       disposeMarkings();
       builtTargets.dispose();
+      loot.dispose();
       disposeSky();
     },
   };

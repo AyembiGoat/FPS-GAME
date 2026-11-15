@@ -62,6 +62,9 @@ export function createAudio() {
     armourBreak(pan = 0) {
       if (engine) sounds.armourBreak(engine, pan);
     },
+    lootPickup(kind: 'item' | 'armour') {
+      if (engine) sounds.lootPickup(engine, kind);
+    },
     zoomClick() {
       if (engine) sounds.zoomClick(engine);
     },
@@ -207,6 +210,12 @@ const MEASURED: Record<string, (engine: Engine) => void> = {
   consumableCancel: sounds.consumableCancel,
   armourBreak: (engine) => {
     sounds.armourBreak(engine, 0);
+  },
+  lootPickupItem: (engine) => {
+    sounds.lootPickup(engine, 'item');
+  },
+  lootPickupArmour: (engine) => {
+    sounds.lootPickup(engine, 'armour');
   },
   weaponSwitch: sounds.weaponSwitch,
   reload: (engine) => {

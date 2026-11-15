@@ -1355,6 +1355,21 @@ export function consumableCancel(engine: Engine) {
   engine.tone('ui', now, { from: 300, to: 190, level: 0.07, decay: 0.1 });
 }
 
+/** Picking something up off a surface: a hand closing on it, then it going into the kit. */
+export function lootPickup(engine: Engine, kind: 'item' | 'armour') {
+  const now = engine.now();
+  if (kind === 'item') {
+    rustle(engine, now, 0.14, 0.1);
+    clack(engine, 'handling', now + 0.07, { pitch: 1500, level: 0.12, length: 0.03 });
+    rustle(engine, now + 0.12, 0.11, 0.14);
+  } else {
+    // Heavier: webbing dragged on, then a buckle snapping shut.
+    rustle(engine, now, 0.12, 0.26);
+    rustle(engine, now + 0.2, 0.09, 0.18);
+    clack(engine, 'handling', now + 0.34, { pitch: 2300, level: 0.1, length: 0.028 });
+  }
+}
+
 /** A vest or helmet giving out: a ceramic crack with a dull thud under it. */
 export function armourBreak(engine: Engine, pan = 0) {
   const now = engine.now();

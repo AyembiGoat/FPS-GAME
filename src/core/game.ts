@@ -19,6 +19,8 @@ import {
   raycastEnemies,
   stepEnemies,
 } from './enemy';
+import type { LootItem, LootRefusal, LootSpawn } from './loot';
+import { applyLoot, lootRefusal, nearestLoot } from './loot';
 import type { GameMap, MapId, SurfaceMaterial, TargetSpawn } from './map';
 import type { GameModeId } from './modes';
 import { DEFAULT_GAME_MODE, getGameModeSpec, GUN_GAME_LADDER } from './modes';
@@ -51,6 +53,8 @@ export type GameInput = PlayerInput &
   WeaponInput & {
     /** One-shot request to use a healing or boost item (a specific one, or the best carried). */
     readonly useConsumable?: ConsumableRequest | null;
+    /** One-shot request to pick up the item lying within reach. */
+    readonly interact?: boolean;
   };
 export type MatchOutcome = 'ongoing' | 'victory' | 'defeat';
 
@@ -112,6 +116,12 @@ export interface GameState {
   readonly playerBoost: number;
   /** Carried healing and boost items: five fixed integer counts. */
   readonly consumables: ConsumableInventory;
+  /** True for each of the map's loot items already taken (`[]` in modes without loot). */
+  readonly lootTaken: readonly boolean[];
+  /** Index into the map's loot of the item the pick-up key would take now, or `null`. */
+  readonly nearbyLoot: number | null;
+  /** Why `nearbyLoot` cannot be taken, or `null` when it can (or nothing is in reach). */
+  readonly nearbyLootRefusal: LootRefusal | null;
   /** The item being applied right now, or `null`. The weapon cannot fire while this is set. */
   readonly consumableUse: ConsumableUse | null;
   /** Unit horizontal vector pointing FROM player TOWARD last attacker (`null` until hit). */
@@ -238,6 +248,8 @@ export type GameEvent =
       readonly id: ConsumableId;
       readonly reason: ConsumableCancelReason;
     }
+  | { readonly type: 'loot-taken'; readonly index: number; readonly item: LootItem }
+  | { readonly type: 'loot-refused'; readonly index: number; readonly reason: LootRefusal }
   | { readonly type: 'player-down' }
   | { readonly type: 'mode-victory'; readonly mode: GameModeId }
   | { readonly type: 'target-down'; readonly index: number; readonly distance: number }
@@ -435,6 +447,13 @@ function findAimedTarget(
   return null;
 }
 
+const NO_LOOT: readonly LootSpawn[] = [];
+
+/** The loot that lies in the level in this mode. */
+function modeLoot(map: GameMap, usesLoot: boolean): readonly LootSpawn[] {
+  return usesLoot ? (map.loot ?? NO_LOOT) : NO_LOOT;
+}
+
 export const INITIAL_RUN_STATS: RunStats = {
   elapsed: 0,
   active: false,
@@ -462,18 +481,19 @@ function hasRunAction(input: GameInput): boolean {
     input.aim ||
     input.reload ||
     Boolean(input.switchSlot) ||
-    Boolean(input.useConsumable)
+    Boolean(input.useConsumable) ||
+    Boolean(input.interact)
   );
 }
 
 export interface CreateGameOptions {
   readonly mode?: GameModeId;
   readonly seed?: number;
-  /** Vest level to start with; defaults to the mode's. */
+  /** Vest level to start with; none by default, since armour is picked up. */
   readonly vest?: number;
-  /** Helmet level to start with; defaults to the mode's. */
+  /** Helmet level to start with; none by default. */
   readonly helmet?: number;
-  /** Healing and boost items to start with; defaults to the mode's. */
+  /** Healing and boost items to start with; none by default, since items are picked up. */
   readonly consumables?: ConsumableInventory;
   /** Boost meter to start with (0..100); defaults to 0. */
   readonly boost?: number;
@@ -516,12 +536,12 @@ export function createGame(
     player: createPlayer(map.spawn.position, map.spawn.yaw),
     playerHealth: modeSpec.playerMaxHealth,
     playerMaxHealth: modeSpec.playerMaxHealth,
-    playerArmour: createArmour(
-      options.vest ?? modeSpec.startingVest,
-      options.helmet ?? modeSpec.startingHelmet,
-    ),
+    playerArmour: createArmour(options.vest ?? 0, options.helmet ?? 0),
     playerBoost: Math.min(BOOST_TUNING.max, Math.max(0, options.boost ?? 0)),
-    consumables: sanitizeConsumables(options.consumables ?? modeSpec.startingConsumables),
+    consumables: sanitizeConsumables(options.consumables),
+    lootTaken: modeLoot(map, modeSpec.usesLoot).map(() => false),
+    nearbyLoot: null,
+    nearbyLootRefusal: null,
     consumableUse: null,
     lastDamageDir: null,
     damagePulse: 0,
@@ -622,6 +642,8 @@ export function stepGame(
         damagePulse,
         enemies: deadEnemyStep.enemies,
         aimedTarget: null,
+        nearbyLoot: null,
+        nearbyLootRefusal: null,
         rngState: rng.getState(),
       },
       events,
@@ -1068,13 +1090,41 @@ export function stepGame(
     }
   }
 
+  // Picking up the item within reach. Decided from where the player stood when the key went
+  // down, so the prompt the player saw is the item they get.
+  let consumables = state.consumables;
+  let lootTaken = state.lootTaken;
+  const loot = modeLoot(map, modeSpec.usesLoot);
+  if (input.interact && outcome === 'ongoing' && state.nearbyLoot !== null) {
+    const spawn = loot[state.nearbyLoot];
+    if (spawn && !lootTaken[state.nearbyLoot]) {
+      const reason = lootRefusal(spawn.item, consumables, playerArmour);
+      if (reason) {
+        events.push({ type: 'loot-refused', index: state.nearbyLoot, reason });
+      } else {
+        const picked = applyLoot(spawn.item, consumables, playerArmour);
+        consumables = picked.inventory;
+        playerArmour = picked.armour;
+        const takenIndex = state.nearbyLoot;
+        lootTaken = lootTaken.map((taken, index) => taken || index === takenIndex);
+        events.push({ type: 'loot-taken', index: takenIndex, item: spawn.item });
+      }
+    }
+  }
+  const nearbyLoot =
+    outcome === 'ongoing' && loot.length > 0 ? nearestLoot(loot, lootTaken, player.position) : null;
+  const nearbySpawn = nearbyLoot === null ? undefined : loot[nearbyLoot];
+  const nearbyLootRefusal = nearbySpawn
+    ? lootRefusal(nearbySpawn.item, consumables, playerArmour)
+    : null;
+
   // Healing items, boost drain and boost regeneration.
   const survival = stepSurvival(
     {
       health: playerHealth,
       maxHealth: state.playerMaxHealth,
       boost: state.playerBoost,
-      inventory: state.consumables,
+      inventory: consumables,
       use: state.consumableUse,
     },
     {
@@ -1136,6 +1186,9 @@ export function stepGame(
       playerArmour,
       playerBoost: survival.state.boost,
       consumables: survival.state.inventory,
+      lootTaken,
+      nearbyLoot,
+      nearbyLootRefusal,
       consumableUse: survival.state.use,
       lastDamageDir,
       damagePulse,

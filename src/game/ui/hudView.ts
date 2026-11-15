@@ -1,8 +1,18 @@
-import { BOOST_TUNING, CONSUMABLE_ORDER, CONSUMABLES } from '../../core/consumables';
-import type { ConsumableId } from '../../core/consumables';
-import { ARMOUR_TUNING } from '../../core/damage';
+import type { ConsumableId, ConsumableKind } from '../../core/consumables';
+import {
+  BOOST_PRIORITY,
+  BOOST_TUNING,
+  consumableAtCap,
+  CONSUMABLES,
+  HEAL_PRIORITY,
+  resolveConsumableRequest,
+} from '../../core/consumables';
+import type { ArmourLevel, ArmourPiece } from '../../core/damage';
+import { ARMOUR_TUNING, armourMaxDurability } from '../../core/damage';
 import type { GameState } from '../../core/game';
 import { activeWeaponSpec, runAccuracyPercent, TARGET } from '../../core/game';
+import type { LootItem } from '../../core/loot';
+import { lootName } from '../../core/loot';
 import { getMapById } from '../../core/maps';
 import { getGameModeSpec, GUN_GAME_LADDER } from '../../core/modes';
 import { PLAYER_TUNING } from '../../core/player';
@@ -10,6 +20,7 @@ import type { OpticId, ScopeOverlayKind, WeaponId, WeaponSlot } from '../../core
 import { getWeaponSpec, OPTICS } from '../../core/weapon';
 import type { ScopeOverlayState } from '../view';
 import { el, formatRunTime } from './dom';
+import type { IconName } from './icons';
 import { createIcon, createWeaponSilhouette } from './icons';
 import { createKeycap } from './keycaps';
 
@@ -22,15 +33,51 @@ const TICK_POP_SECONDS = 0.14;
 const DRY_FIRE_SECONDS = 0.18;
 const DIR_ARC_SECONDS = 0.72;
 
-/** Keys printed on the item tray; they match `CONSUMABLE_KEYS` in `input.ts`. */
-const CONSUMABLE_KEY_LABEL: Readonly<Record<ConsumableId, string>> = {
-  'med-kit': '7',
-  'first-aid': '8',
-  bandage: '9',
-  'energy-drink': '0',
-  painkiller: '-',
+const ITEM_ICON: Readonly<Record<ConsumableId, IconName>> = {
+  bandage: 'bandage',
+  'first-aid': 'firstAid',
+  'med-kit': 'medKit',
+  'energy-drink': 'energyDrink',
+  painkiller: 'painkiller',
 };
-const ARMOUR_LEVEL_LABEL = ['—', 'L1', 'L2', 'L3'] as const;
+
+/**
+ * The carried-item rows. Each row is one key and one verb, then what is carried, weakest first.
+ * The per-item number keys are left to the Controls screen: a digit beside a count reads as a
+ * second count.
+ */
+const KIT_ROWS: readonly {
+  readonly kind: ConsumableKind;
+  readonly key: string;
+  readonly verb: string;
+  readonly request: 'best-heal' | 'best-boost';
+  readonly items: readonly ConsumableId[];
+}[] = [
+  {
+    kind: 'heal',
+    key: 'H',
+    verb: 'Heal',
+    request: 'best-heal',
+    items: [...HEAL_PRIORITY].reverse(),
+  },
+  {
+    kind: 'boost',
+    key: 'B',
+    verb: 'Boost',
+    request: 'best-boost',
+    items: [...BOOST_PRIORITY].reverse(),
+  },
+];
+
+function lootIcon(item: LootItem): IconName {
+  if (item.kind === 'consumable') return ITEM_ICON[item.id];
+  return item.piece === 'vest' ? 'vest' : 'helmet';
+}
+
+function armourEffect(piece: ArmourPiece, level: ArmourLevel): string {
+  const share = Math.round(ARMOUR_TUNING.absorb[level] * 100);
+  return `Takes ${share}% off hits to the ${piece === 'vest' ? 'body' : 'head'} until it wears out.`;
+}
 
 const FIRE_MODE_SHORT: Record<string, string> = {
   auto: 'AUTO',
@@ -421,13 +468,14 @@ export function createHudView(container: HTMLElement, initialTargets: number, ac
   nextGunRow.hidden = true;
   objective.append(objectiveTop, segmentBar, nextGunRow);
 
-  // 2. Bottom-Left Operator Vitals Card (Active in Combat Modes)
+  // 2. Bottom-left health card (combat modes). Boost, armour and carried items each take a row
+  // only while the player has them, so a bare start shows health and nothing else.
   const vitalsPanel = el('section', 'hud-plate hud-vitals');
-  vitalsPanel.setAttribute('aria-label', 'Operator health');
+  vitalsPanel.setAttribute('aria-label', 'Health');
   vitalsPanel.dataset.state = 'healthy';
   const vitalsTop = el('div', 'hud-vitals__top');
   const vitalsLeft = el('div', 'hud-vitals__title');
-  vitalsLeft.append(createIcon('shield', 'hud-vitals__icon'), el('span', undefined, 'Operator HP'));
+  vitalsLeft.append(createIcon('heart', 'hud-vitals__icon'), el('span', undefined, 'Health'));
   const vitalsNumWrap = el('div', 'hud-vitals__num-wrap');
   const vitalsCurrent = el('span', 'hud-vitals__num', '100');
   const vitalsMax = el('span', 'hud-vitals__max', '/ 100');
@@ -443,9 +491,11 @@ export function createHudView(container: HTMLElement, initialTargets: number, ac
     return s;
   });
 
-  // Boost meter: one thin track under the health bar, notched where each healing rate starts.
-  const boostTrack = el('div', 'hud-boost');
-  boostTrack.setAttribute('aria-label', 'Boost');
+  // Boost: a labelled meter, notched where each healing rate starts.
+  const boostRow = el('div', 'hud-boost');
+  boostRow.hidden = true;
+  const boostLabel = el('span', 'hud-boost__label', 'Boost');
+  const boostTrack = el('div', 'hud-boost__track');
   const boostFill = el('div', 'hud-boost__fill');
   boostTrack.append(boostFill);
   for (const tier of BOOST_TUNING.tiers) {
@@ -453,41 +503,74 @@ export function createHudView(container: HTMLElement, initialTargets: number, ac
     notch.style.left = `${((tier.threshold / BOOST_TUNING.max) * 100).toFixed(1)}%`;
     boostTrack.append(notch);
   }
+  const boostNote = el('span', 'hud-boost__note', '');
+  boostRow.append(boostLabel, boostTrack, boostNote);
 
-  // Armour: helmet and vest, each with its level and remaining durability.
+  // Armour: one cell per piece worn, with its level and how much of it is left.
   const armourRow = el('div', 'hud-armour');
-  const makeArmourCell = (label: string) => {
+  armourRow.hidden = true;
+  const makeArmourCell = (label: string, icon: IconName) => {
     const cell = el('div', 'hud-armour__cell');
-    cell.dataset.state = 'none';
+    cell.hidden = true;
+    const head = el('div', 'hud-armour__head');
     const name = el('span', 'hud-armour__name', label);
-    const level = el('span', 'hud-armour__level', '—');
+    const level = el('span', 'hud-armour__level', '');
+    head.append(createIcon(icon, 'hud-armour__icon'), name, level);
     const track = el('div', 'hud-armour__track');
     const fill = el('div', 'hud-armour__fill');
     track.append(fill);
-    cell.append(name, level, track);
+    cell.append(head, track);
     armourRow.append(cell);
     return { cell, level, fill };
   };
-  const helmetCell = makeArmourCell('Helmet');
-  const vestCell = makeArmourCell('Vest');
+  const helmetCell = makeArmourCell('Helmet', 'helmet');
+  const vestCell = makeArmourCell('Vest', 'vest');
 
-  // Item tray: five fixed slots with their key and how many are carried.
-  const itemTray = el('div', 'hud-items');
-  const itemChips = CONSUMABLE_ORDER.map((id) => {
-    const chip = el('div', 'hud-item');
-    chip.dataset.kind = CONSUMABLES[id].kind;
-    chip.dataset.empty = 'true';
-    chip.dataset.using = 'false';
-    chip.title = CONSUMABLES[id].description;
-    const key = createKeycap(CONSUMABLE_KEY_LABEL[id]);
-    const name = el('span', 'hud-item__name', CONSUMABLES[id].shortName);
-    const count = el('span', 'hud-item__count', '0');
-    chip.append(key, name, count);
-    itemTray.append(chip);
-    return { id, chip, count };
+  // Carried items: "[H] Heal  Bandage ×5  Med Kit ×1". The item the key will use is lit.
+  const kitPanel = el('div', 'hud-kit');
+  kitPanel.hidden = true;
+  const kitRows = KIT_ROWS.map((spec) => {
+    const row = el('div', 'hud-kit__row');
+    row.dataset.kind = spec.kind;
+    row.hidden = true;
+    const action = el('span', 'hud-kit__action');
+    action.append(createKeycap(spec.key), el('span', undefined, spec.verb));
+    const list = el('span', 'hud-kit__items');
+    const items = spec.items.map((id) => {
+      const chip = el('span', 'hud-kit__item');
+      chip.hidden = true;
+      chip.title = CONSUMABLES[id].description;
+      const count = el('span', 'hud-kit__count ui-tabular', '');
+      chip.append(
+        createIcon(ITEM_ICON[id], 'hud-kit__icon'),
+        el('span', 'hud-kit__name', CONSUMABLES[id].shortName),
+        count,
+      );
+      list.append(chip);
+      return { id, chip, count };
+    });
+    row.append(action, list);
+    kitPanel.append(row);
+    return { spec, row, items, next: null as ConsumableId | null, ready: false };
   });
 
-  vitalsPanel.append(vitalsTop, vitalsBar, boostTrack, armourRow, itemTray);
+  vitalsPanel.append(vitalsTop, vitalsBar, boostRow, armourRow, kitPanel);
+
+  // 2a. Pick-up prompt beside the crosshair: the key and verb, the item, what it does.
+  const pickupPanel = el('div', 'hud-pickup');
+  pickupPanel.dataset.open = 'false';
+  const pickupAction = el('div', 'hud-pickup__action');
+  const pickupKey = createKeycap('F');
+  const pickupVerb = el('span', 'hud-pickup__verb', 'Pick up');
+  pickupAction.append(pickupKey, pickupVerb);
+  const pickupItem = el('div', 'hud-pickup__item');
+  const pickupIconHost = el('span', 'hud-pickup__icon-host');
+  const pickupName = el('span', 'hud-pickup__name', '');
+  const pickupCount = el('span', 'hud-pickup__count ui-tabular', '');
+  pickupItem.append(pickupIconHost, pickupName, pickupCount);
+  const pickupEffect = el('div', 'hud-pickup__effect', '');
+  const pickupHave = el('div', 'hud-pickup__have', '');
+  pickupPanel.append(pickupAction, pickupItem, pickupEffect, pickupHave);
 
   // 2b. Item-in-use progress, under the crosshair.
   const usePanel = el('div', 'hud-use');
@@ -550,6 +633,10 @@ export function createHudView(container: HTMLElement, initialTargets: number, ac
   const sprintPill = el('div', 'hud-stance__pill');
   sprintPill.append(createIcon('sprint'), el('span', undefined, 'Sprint'));
   stanceWrap.append(leanLeftPill, leanRightPill, sprintPill);
+
+  // The stance pills stack on top of the health card, whatever height it has grown to.
+  const cornerStack = el('div', 'hud-corner');
+  cornerStack.append(stanceWrap, vitalsPanel);
 
   // 7. Bottom-Right Weapon & Ammo Cluster
   const weaponCluster = el('div', 'hud-weapon-cluster');
@@ -695,13 +782,13 @@ export function createHudView(container: HTMLElement, initialTargets: number, ac
     damageArc,
     scope.root,
     objective,
-    vitalsPanel,
+    cornerStack,
+    pickupPanel,
     usePanel,
     targetPanel,
     crosshair,
     hitMarker,
     reloadPrompt,
-    stanceWrap,
     weaponCluster,
     feedWrap,
     banner,
@@ -730,9 +817,10 @@ export function createHudView(container: HTMLElement, initialTargets: number, ac
   let shownHealth = -1;
   let shownVitalsState = '';
   let shownBoost = '';
-  let shownBoostHealing = false;
+  let shownBoostNote = '';
   let shownArmourKey = '';
   let shownItemsKey = '';
+  let shownPickupKey = '';
   let shownUseId: ConsumableId | null = null;
   let shownUseTime = '';
   let shownTargetKey = '';
@@ -876,6 +964,11 @@ export function createHudView(container: HTMLElement, initialTargets: number, ac
       pushFeed(`${CONSUMABLES[id].shortName} Interrupted`, 'CANCELLED');
     },
 
+    onLootTaken(item: LootItem) {
+      const count = item.kind === 'consumable' ? ` ×${item.count}` : '';
+      pushFeed(`${lootName(item)}${count}`, item.kind === 'armour' ? 'WORN' : 'PICKED UP');
+    },
+
     onDryFire() {
       dryFireTimer = DRY_FIRE_SECONDS;
       weaponPanel.dataset.dryFire = 'true';
@@ -920,7 +1013,6 @@ export function createHudView(container: HTMLElement, initialTargets: number, ac
         shownGunGameTier = -2;
         targetLabel.textContent = modeSpec.objectiveLabel;
         vitalsPanel.hidden = !modeSpec.usesEnemies;
-        layer.dataset.survival = modeSpec.usesEnemies ? 'true' : 'false';
         slotStrip.hidden = modeSpec.usesWeaponLadder;
         gunGameNextBadge.hidden = !modeSpec.usesWeaponLadder;
         nextGunRow.hidden = !modeSpec.usesWeaponLadder;
@@ -975,11 +1067,14 @@ export function createHudView(container: HTMLElement, initialTargets: number, ac
         if (boostText !== shownBoost) {
           shownBoost = boostText;
           boostFill.style.width = `${boostText}%`;
+          boostRow.hidden = boostText === '0';
         }
-        const boostHealing = BOOST_TUNING.tiers.some((tier) => state.playerBoost > tier.threshold);
-        if (boostHealing !== shownBoostHealing) {
-          shownBoostHealing = boostHealing;
-          boostTrack.dataset.healing = boostHealing ? 'true' : 'false';
+        const healingTier = BOOST_TUNING.tiers.find((tier) => state.playerBoost >= tier.threshold);
+        const boostNoteText = healingTier ? `+${healingTier.healthPerSecond} health / s` : 'Fading';
+        if (boostNoteText !== shownBoostNote) {
+          shownBoostNote = boostNoteText;
+          boostNote.textContent = boostNoteText;
+          boostRow.dataset.healing = healingTier ? 'true' : 'false';
         }
 
         const armour = state.playerArmour;
@@ -988,40 +1083,103 @@ export function createHudView(container: HTMLElement, initialTargets: number, ac
           shownArmourKey = armourKey;
           const paint = (
             cell: { cell: HTMLElement; level: HTMLElement; fill: HTMLElement },
-            level: 0 | 1 | 2 | 3,
+            piece: ArmourPiece,
+            level: ArmourLevel,
             durability: number,
-            pool: number,
           ) => {
+            const pool = armourMaxDurability(piece, level);
             const share = pool > 0 ? Math.max(0, Math.min(1, durability / pool)) : 0;
-            cell.level.textContent = ARMOUR_LEVEL_LABEL[level];
+            cell.cell.hidden = level === 0;
+            cell.level.textContent = `Level ${level}`;
             cell.fill.style.width = `${(share * 100).toFixed(0)}%`;
-            cell.cell.dataset.state =
-              level === 0 ? 'none' : share <= 0 ? 'broken' : share < 0.3 ? 'worn' : 'sound';
+            cell.cell.dataset.state = share < 0.3 ? 'worn' : 'sound';
           };
-          paint(
-            helmetCell,
-            armour.helmet,
-            armour.helmetDurability,
-            ARMOUR_TUNING.helmetDurability[armour.helmet],
-          );
-          paint(
-            vestCell,
-            armour.vest,
-            armour.vestDurability,
-            ARMOUR_TUNING.vestDurability[armour.vest],
-          );
+          paint(helmetCell, 'helmet', armour.helmet, armour.helmetDurability);
+          paint(vestCell, 'vest', armour.vest, armour.vestDurability);
+          armourRow.hidden = armour.helmet === 0 && armour.vest === 0;
         }
 
+        // Carried items. `next` is what the row's key would use right now; `ready` is whether
+        // pressing it would do anything (a heal at full health would not).
         const usingId = state.consumableUse?.id ?? null;
-        const itemsKey = `${CONSUMABLE_ORDER.map((id) => state.consumables[id]).join(',')}|${usingId ?? ''}`;
+        let itemsKey = usingId ?? '';
+        for (const row of kitRows) {
+          row.next = resolveConsumableRequest(
+            row.spec.request,
+            state.consumables,
+            state.playerHealth,
+            state.playerBoost,
+          );
+          row.ready =
+            row.next !== null &&
+            !consumableAtCap(CONSUMABLES[row.next], state.playerHealth, state.playerBoost);
+          itemsKey += `|${row.next ?? ''}:${row.ready ? 1 : 0}`;
+          for (const item of row.items) itemsKey += `,${state.consumables[item.id]}`;
+        }
         if (itemsKey !== shownItemsKey) {
           shownItemsKey = itemsKey;
-          for (const item of itemChips) {
-            const carried = state.consumables[item.id];
-            item.count.textContent = String(carried);
-            item.chip.dataset.empty = carried > 0 ? 'false' : 'true';
-            item.chip.dataset.using = item.id === usingId ? 'true' : 'false';
+          let anyCarried = false;
+          for (const row of kitRows) {
+            let rowCarried = false;
+            for (const item of row.items) {
+              const carried = state.consumables[item.id];
+              item.chip.hidden = carried <= 0;
+              item.count.textContent = `×${carried}`;
+              item.chip.dataset.next = row.ready && item.id === row.next ? 'true' : 'false';
+              item.chip.dataset.using = item.id === usingId ? 'true' : 'false';
+              if (carried > 0) rowCarried = true;
+            }
+            row.row.hidden = !rowCarried;
+            row.row.dataset.ready = row.ready ? 'true' : 'false';
+            if (rowCarried) anyCarried = true;
           }
+          kitPanel.hidden = !anyCarried;
+        }
+      }
+
+      // Pick-up prompt. Hidden while the sights are up so it never covers the sight picture.
+      const lootIndex = aimBlend < 0.5 ? state.nearbyLoot : null;
+      const lootSpawn = lootIndex === null ? undefined : getMapById(state.mapId).loot?.[lootIndex];
+      const refusal = state.nearbyLootRefusal;
+      let pickupKeyText = '';
+      if (lootSpawn) {
+        const item = lootSpawn.item;
+        pickupKeyText =
+          item.kind === 'consumable'
+            ? `${lootSpawn.id}|${refusal ?? ''}|${state.consumables[item.id]}`
+            : `${lootSpawn.id}|${refusal ?? ''}|${state.playerArmour.vest}:${state.playerArmour.helmet}`;
+      }
+      if (pickupKeyText !== shownPickupKey) {
+        shownPickupKey = pickupKeyText;
+        if (lootSpawn) {
+          const item = lootSpawn.item;
+          pickupPanel.dataset.open = 'true';
+          pickupPanel.dataset.blocked = refusal ? 'true' : 'false';
+          pickupKey.hidden = refusal !== null;
+          pickupVerb.textContent =
+            refusal === 'wearing-better'
+              ? 'Yours is as good or better'
+              : refusal === 'carry-limit'
+                ? 'Cannot carry more'
+                : item.kind === 'armour'
+                  ? 'Put on'
+                  : 'Pick up';
+          pickupIconHost.replaceChildren(createIcon(lootIcon(item), 'hud-pickup__icon'));
+          pickupName.textContent = lootName(item);
+          if (item.kind === 'consumable') {
+            pickupCount.textContent = `×${item.count}`;
+            pickupEffect.textContent = CONSUMABLES[item.id].description;
+            const carried = state.consumables[item.id];
+            pickupHave.textContent = carried > 0 ? `You carry ×${carried}` : 'You carry none';
+          } else {
+            pickupCount.textContent = '';
+            pickupEffect.textContent = armourEffect(item.piece, item.level);
+            const worn =
+              item.piece === 'vest' ? state.playerArmour.vest : state.playerArmour.helmet;
+            pickupHave.textContent = worn > 0 ? `You wear Level ${worn}` : 'You wear none';
+          }
+        } else {
+          pickupPanel.dataset.open = 'false';
         }
       }
 

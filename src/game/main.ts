@@ -1,4 +1,6 @@
 import { createBot } from '../core/bot';
+import { sanitizeConsumables } from '../core/consumables';
+import { createArmour } from '../core/damage';
 import { createFixedLoop, SIM_STEP_SECONDS } from '../core/fixedLoop';
 import type { GameEvent, GameInput, GameState } from '../core/game';
 import { createGame, setGameLoadout, stepGame } from '../core/game';
@@ -280,6 +282,16 @@ function play(runMode: 'auto' | 'bot' | 'play') {
             Math.min(state.playerMaxHealth, patch.health ?? state.playerHealth),
           ),
           playerBoost: Math.max(0, Math.min(100, patch.boost ?? state.playerBoost)),
+          consumables: patch.consumables
+            ? sanitizeConsumables({ ...state.consumables, ...patch.consumables })
+            : state.consumables,
+          playerArmour:
+            patch.vest === undefined && patch.helmet === undefined
+              ? state.playerArmour
+              : createArmour(
+                  patch.vest ?? state.playerArmour.vest,
+                  patch.helmet ?? state.playerArmour.helmet,
+                ),
         };
         previous = state;
         drawCurrent(0);

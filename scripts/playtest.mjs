@@ -372,24 +372,135 @@ if (args.includes('--materials')) {
           summary.loudness.tierAdvance < 0.25 &&
           Object.values(summary.loudness).every((v) => v > 0),
       );
+      check(
+        'picking something up is a quiet handling sound next to a gunshot',
+        summary.loudness.lootPickupItem > 0.02 &&
+          summary.loudness.lootPickupItem < 0.2 &&
+          summary.loudness.lootPickupArmour > 0.02 &&
+          summary.loudness.lootPickupArmour < 0.2,
+      );
 
-      // 7b. Survival HUD: armour, boost, item tray, item-use progress, cancel by firing.
+      // 7b. Loot and the survival HUD: start with nothing, pick things up, then use them.
       await game.page.evaluate(() => {
         window.__fps.map('shoot-house');
         window.__fps.mode('gungame');
         window.__fps.openScreen('playing');
-        window.__fps.setVitals({ health: 38 });
       });
-      const kitBefore = (await game.state()).consumables;
-      const survivalHud = await game.page.evaluate(() => ({
-        vitalsShown: !document.querySelector('.hud-vitals')?.hidden,
-        items: document.querySelectorAll('.hud-item').length,
-        armourCells: document.querySelectorAll('.hud-armour__cell').length,
-      }));
+      await game.step({}, 4);
+      const hudRows = () =>
+        game.page.evaluate(() => {
+          const shown = (selector) =>
+            [...document.querySelectorAll(selector)].filter((el) => el.offsetParent !== null)
+              .length;
+          const prompt = document.querySelector('.hud-pickup');
+          return {
+            vitalsShown: shown('.hud-vitals') === 1,
+            boost: shown('.hud-boost'),
+            armourCells: shown('.hud-armour__cell'),
+            kitRows: shown('.hud-kit__row'),
+            kitItems: shown('.hud-kit__item'),
+            promptOpen: prompt?.dataset.open === 'true',
+            promptBlocked: prompt?.dataset.blocked === 'true',
+            promptText: prompt?.textContent ?? '',
+          };
+        });
+      const bare = await game.state();
+      const bareHud = await hudRows();
+      await shot('31-hud-start-nothing-carried');
       check(
-        'combat HUD shows health, two armour pieces and five item slots',
-        survivalHud.vitalsShown && survivalHud.items === 5 && survivalHud.armourCells === 2,
+        'Gun Game starts with no items and no armour, and the health card shows health only',
+        Object.values(bare.consumables).every((n) => n === 0) &&
+          bare.playerArmour.vest === 0 &&
+          bare.playerArmour.helmet === 0 &&
+          bare.lootTaken.length === 13 &&
+          bare.lootTaken.every((taken) => !taken) &&
+          bareHud.vitalsShown &&
+          bareHud.boost === 0 &&
+          bareHud.armourCells === 0 &&
+          bareHud.kitRows === 0 &&
+          !bareHud.promptOpen,
       );
+
+      // Stand 1.5 m south of a loot crate, looking down at it.
+      const standAt = async (x, z) => {
+        await game.page.evaluate(
+          (px, pz) => window.__fps.place({ x: px, y: 0, z: pz }, 0, -0.4),
+          x,
+          z + 1.5,
+        );
+        await game.step({}, 3);
+      };
+
+      await standAt(11.0, 21.4);
+      const bandagePrompt = await hudRows();
+      await shot('34-loot-prompt-bandages');
+      const takeBandage = await game.step({ interact: true }, 1);
+      await game.step({}, 3);
+      const withBandage = await game.state();
+      const bandageHud = await hudRows();
+      check(
+        'standing at a crate shows what is on it, and F picks it up',
+        bandagePrompt.promptOpen &&
+          !bandagePrompt.promptBlocked &&
+          /Pick up/i.test(bandagePrompt.promptText) &&
+          /Bandage/i.test(bandagePrompt.promptText) &&
+          takeBandage.some((e) => e.type === 'loot-taken' && e.index === 0) &&
+          withBandage.consumables.bandage === 5 &&
+          withBandage.lootTaken[0] === true &&
+          !bandageHud.promptOpen &&
+          bandageHud.kitRows === 1 &&
+          bandageHud.kitItems === 1,
+      );
+
+      await standAt(9.6, 13.6);
+      await shot('35-loot-prompt-helmet');
+      await game.step({ interact: true }, 1);
+      await standAt(-0.6, 2.2);
+      await game.step({ interact: true }, 1);
+      await standAt(-1.2, -11.2);
+      await game.step({ interact: true }, 1);
+      await standAt(30.4, 20.8);
+      await game.step({ interact: true }, 1);
+      await game.step({}, 3);
+      const kitted = await game.state();
+      const kittedHud = await hudRows();
+      check(
+        'helmet, vest, first aid kit and energy drinks are all picked up from their crates',
+        kitted.playerArmour.helmet === 1 &&
+          kitted.playerArmour.vest === 1 &&
+          kitted.consumables['first-aid'] === 1 &&
+          kitted.consumables['energy-drink'] === 2 &&
+          kittedHud.armourCells === 2 &&
+          kittedHud.kitRows === 2 &&
+          kittedHud.kitItems === 3,
+      );
+
+      // Armour no better than what is worn is refused, and the prompt says why.
+      await game.page.evaluate(() => window.__fps.setVitals({ vest: 3 }));
+      await standAt(-25.8, -9.2);
+      const refusedPrompt = await hudRows();
+      await shot('36-loot-prompt-refused-vest');
+      const refusedEvents = await game.step({ interact: true }, 1);
+      const afterRefusal = await game.state();
+      check(
+        'a vest no better than the one worn is refused and stays on its crate',
+        refusedPrompt.promptOpen &&
+          refusedPrompt.promptBlocked &&
+          refusedEvents.some((e) => e.type === 'loot-refused') &&
+          afterRefusal.playerArmour.vest === 3 &&
+          afterRefusal.lootTaken[7] === false,
+      );
+
+      // Use what was picked up. The walk round the crates brings hostiles after the player and
+      // a hit cancels an item, so the run starts again with the same kit in hand.
+      await game.page.evaluate((consumables) => {
+        window.__fps.restart();
+        window.__fps.setVitals({ health: 38, consumables, vest: 1, helmet: 1 });
+      }, kitted.consumables);
+      await game.step({}, 3);
+      const kitBefore = (await game.state()).consumables;
+      await new Promise((r) => setTimeout(r, 300));
+      await shot('37-hud-hurt-with-kit');
 
       const startEvents = await game.step({ useConsumable: 'first-aid' }, 1);
       await game.step({}, 150);
@@ -417,6 +528,7 @@ if (args.includes('--materials')) {
       for (let i = 0; i < 40 && (await game.state()).consumableUse; i++) await game.step({}, 10);
       const boosted = await game.state();
       await game.step({}, 4);
+      await new Promise((r) => setTimeout(r, 300));
       await shot('32-hud-boost-active');
       check(
         'an energy drink fills the boost meter by about 40',
@@ -463,6 +575,7 @@ if (args.includes('--materials')) {
         return null;
       });
       summary.aimedReadout = aimedReadout;
+      await new Promise((r) => setTimeout(r, 300));
       await shot('33-hud-aimed-target-health');
       check(
         'aiming at a hostile the player has hurt shows its remaining health',
@@ -511,10 +624,24 @@ if (args.includes('--materials')) {
         window.__fps.openScreen('playing');
       });
 
-      summary.cargoYardRenderStats = await game.page.evaluate(() => window.__fps.renderStats());
+      // Draw calls of whole frames (world, shadows, gun in hand) over 40 steps. Most frames skip
+      // the shadow pass, so the lowest count is the usual frame and the highest a shadow frame.
+      summary.cargoYardRenderStats = await game.page.evaluate(() => {
+        const calls = [];
+        for (let i = 0; i < 40; i++) {
+          window.__fps.step({}, 1);
+          calls.push(window.__fps.renderStats().calls);
+        }
+        return {
+          ...window.__fps.renderStats(),
+          calls: Math.min(...calls),
+          shadowFrameCalls: Math.max(...calls),
+        };
+      });
+      await game.page.evaluate(() => window.__fps.restart());
       check(
-        'Cargo Yard batched rendering with 10 3D operators stays lean (<= 115 draw calls)',
-        summary.cargoYardRenderStats.calls <= 115,
+        'a Cargo Yard Gun Game frame with ten hostiles and all the loot stays under 260 draw calls',
+        summary.cargoYardRenderStats.calls <= 260,
       );
 
       const cargoGunGame = await game.page.evaluate(() => {
@@ -592,6 +719,14 @@ if (args.includes('--materials')) {
       });
       const vitalsHiddenInPractice = await game.page.$eval('.hud-vitals', (el) => el.hidden);
       check('Practice mode hides combat vitals card cleanly', vitalsHiddenInPractice);
+      await game.step({}, 3);
+      summary.cargoYardPracticeCalls = await game.page.evaluate(
+        () => window.__fps.renderStats().calls,
+      );
+      check(
+        'a Cargo Yard Practice frame (no hostiles, no loot) stays under 115 draw calls',
+        summary.cargoYardPracticeCalls <= 115,
+      );
 
       const practiceClear = await game.page.evaluate(() => {
         let steps = 0;

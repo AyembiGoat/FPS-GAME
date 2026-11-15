@@ -327,6 +327,9 @@ export function createGameUi(options: GameUiOptions) {
           case 'consumable-cancel':
             hud.onConsumableCancelled(event.id);
             break;
+          case 'loot-taken':
+            hud.onLootTaken(event.item);
+            break;
           case 'targets-reset':
             hud.clearFeed();
             break;

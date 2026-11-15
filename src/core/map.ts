@@ -1,5 +1,6 @@
 import type { Box } from './collision';
 import type { ArmourLevel } from './damage';
+import type { LootSpawn } from './loot';
 import type { Vec3 } from './vec';
 import type { WeaponId } from './weapon';
 
@@ -80,5 +81,7 @@ export interface GameMap {
   readonly spawn: { readonly position: Vec3; readonly yaw: number };
   readonly targets: readonly TargetSpawn[];
   readonly enemies: readonly EnemySpawn[];
+  /** Items lying in the level for the player to pick up, in modes that use loot. */
+  readonly loot?: readonly LootSpawn[];
   readonly rangeMarkings?: MapMarkerSpec;
 }

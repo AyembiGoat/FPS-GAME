@@ -109,7 +109,13 @@ describe('Gun Game mode (default)', () => {
       })),
     };
 
-    let state = createGame(ladderArena, DEFAULT_LOADOUT, 'primary', { mode: 'gungame', seed: 99 });
+    // Armoured, so the return fire of eight enemies cannot end the run before the ladder is climbed.
+    let state = createGame(ladderArena, DEFAULT_LOADOUT, 'primary', {
+      mode: 'gungame',
+      seed: 99,
+      vest: 3,
+      helmet: 3,
+    });
     // Weaken each enemy to 10 HP so a single round from each tier weapon cleanly kills in order!
     state = {
       ...state,
