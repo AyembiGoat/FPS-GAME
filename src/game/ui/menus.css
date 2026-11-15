@@ -1,3 +1,10 @@
+.ui-root[data-instant='true'] *,
+.ui-root[data-instant='true'] *::before,
+.ui-root[data-instant='true'] *::after {
+  transition: none !important;
+  animation-duration: 0ms !important;
+}
+
 .menu-backdrop {
   position: fixed;
   inset: 0;
@@ -2107,5 +2114,613 @@
   }
   .loadout-stats__list {
     grid-template-columns: 1fr;
+  }
+}
+
+/* === GAME MODES & MAPS DEPLOYMENT SCREEN === */
+.modes-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.modes-active-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  border-radius: 2px;
+  background: rgba(229, 169, 60, 0.14);
+  border: 1px solid rgba(229, 169, 60, 0.48);
+  font-family: var(--ui-font-display);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ui-accent);
+  white-space: nowrap;
+}
+
+.modes-shell {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  max-width: 1120px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(250px, 330px) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+  overflow: hidden;
+}
+
+.modes-selectors {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 18px;
+  overflow-y: auto;
+}
+
+.modes-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.modes-group__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.modes-group__step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1px 6px;
+  border-radius: 2px;
+  background: rgba(229, 169, 60, 0.16);
+  border: 1px solid rgba(229, 169, 60, 0.48);
+  font-family: var(--ui-font-display);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--ui-accent);
+}
+
+.modes-group__label {
+  font-family: var(--ui-font-display);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ui-ink-secondary);
+}
+
+.modes-card-grid,
+.modes-map-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.modes-card {
+  position: relative;
+  text-align: left;
+  padding: 12px 16px;
+  border-radius: 2px;
+  border: 1px solid var(--ui-edge-subtle);
+  background: rgba(12, 17, 25, 0.88);
+  color: var(--ui-ink-primary);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  transition:
+    background-color var(--ui-dur-fast) linear,
+    border-color var(--ui-dur-fast) linear;
+}
+
+.modes-card[data-inspected='true'],
+.modes-map-card[data-inspected='true'] {
+  border-color: var(--ui-accent);
+  background: linear-gradient(90deg, rgba(229, 169, 60, 0.15), rgba(15, 22, 32, 0.94));
+  box-shadow: inset 3px 0 0 var(--ui-accent);
+}
+
+.modes-card:hover,
+.modes-map-card:hover,
+.modes-card:focus-visible,
+.modes-map-card:focus-visible {
+  border-color: var(--ui-edge-highlight);
+  outline: none;
+}
+
+.modes-card__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.modes-card__title-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.modes-card__icon {
+  width: 17px;
+  height: 17px;
+  color: var(--ui-accent);
+  flex-shrink: 0;
+}
+
+.modes-card__name {
+  font-family: var(--ui-font-display);
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  text-transform: uppercase;
+  color: var(--ui-ink-primary);
+}
+
+.modes-card__badge {
+  padding: 2px 7px;
+  border-radius: 2px;
+  font-family: var(--ui-font-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  border: 1px solid var(--ui-edge-subtle);
+  color: var(--ui-ink-secondary);
+  flex-shrink: 0;
+}
+
+.modes-card__badge[data-active='true'] {
+  background: rgba(91, 214, 138, 0.16);
+  border-color: rgba(91, 214, 138, 0.55);
+  color: var(--ui-confirm);
+}
+
+.modes-card__sub {
+  font-family: var(--ui-font-display);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ui-ink-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.modes-card[data-inspected='true'] .modes-card__sub,
+.modes-map-card[data-inspected='true'] .modes-card__sub {
+  color: var(--ui-accent);
+}
+
+/* Arena Map Selector Cards with Miniature Architectural Blueprint Thumbnails */
+.modes-map-card {
+  position: relative;
+  text-align: left;
+  padding: 10px 14px 10px 10px;
+  border-radius: 2px;
+  border: 1px solid var(--ui-edge-subtle);
+  background: rgba(12, 17, 25, 0.88);
+  color: var(--ui-ink-primary);
+  cursor: pointer;
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  transition:
+    background-color var(--ui-dur-fast) linear,
+    border-color var(--ui-dur-fast) linear;
+}
+
+.modes-map-card__thumb {
+  height: 56px;
+  border-radius: 2px;
+  overflow: hidden;
+  border: 1px solid rgba(230, 238, 248, 0.14);
+  background: rgba(7, 10, 15, 0.9);
+  display: grid;
+  place-items: center;
+}
+
+.modes-map-thumb-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.modes-map-card__body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+/* Right Column Unified Deployment Inspector */
+.modes-inspector {
+  max-height: 100%;
+  min-height: 0;
+  padding: 18px 22px;
+  border-radius: 2px;
+  border: 1px solid var(--ui-edge-subtle);
+  border-top: 2px solid var(--ui-accent);
+  background: linear-gradient(180deg, rgba(13, 19, 28, 0.94), rgba(9, 13, 20, 0.98));
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow-y: auto;
+}
+
+.modes-inspector__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.modes-inspector__title {
+  margin: 0;
+  font-family: var(--ui-font-display);
+  font-size: clamp(22px, 2.4vw, 30px);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  line-height: 1;
+  text-transform: uppercase;
+  color: var(--ui-ink-primary);
+}
+
+.modes-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid var(--ui-edge-subtle);
+  border-bottom: 1px solid var(--ui-edge-subtle);
+}
+
+.modes-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.modes-kpi__label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--ui-ink-muted);
+}
+
+.modes-kpi__val {
+  font-family: var(--ui-font-display);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--ui-ink-primary);
+}
+
+/* 8-Tier Gun Game Escalation Ladder / Practice Arsenal Strip */
+.modes-ladder-box {
+  padding: 8px 11px 9px;
+  border-radius: 2px;
+  border: 1px solid var(--ui-edge-subtle);
+  background: rgba(7, 11, 16, 0.78);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.modes-ladder-box__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.modes-ladder-box__note {
+  font-family: var(--ui-font-display);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ui-accent);
+}
+
+.modes-ladder-track {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.modes-ladder-step {
+  padding: 5px 4px 4px;
+  border-radius: 2px;
+  border: 1px solid rgba(230, 238, 248, 0.12);
+  background: rgba(15, 21, 30, 0.88);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.modes-ladder-box[data-mode='gungame'] .modes-ladder-step[data-final='true'] {
+  border-color: rgba(229, 169, 60, 0.6);
+  background: linear-gradient(180deg, rgba(229, 169, 60, 0.18), rgba(15, 21, 30, 0.92));
+}
+
+.modes-ladder-step__tier {
+  font-family: var(--ui-font-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ui-accent);
+}
+
+.modes-ladder-box[data-mode='practice'] .modes-ladder-step__tier {
+  color: var(--ui-ink-muted);
+}
+
+.modes-ladder-step__icon {
+  width: 100%;
+  height: 22px;
+  display: grid;
+  place-items: center;
+}
+
+.modes-ladder-svg {
+  width: 100%;
+  max-width: 64px;
+  height: 20px;
+  color: rgba(236, 242, 249, 0.9);
+}
+
+.modes-ladder-step__name {
+  font-family: var(--ui-font-display);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ui-ink-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.modes-rules__heading {
+  font-family: var(--ui-font-display);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--ui-ink-secondary);
+}
+
+.modes-sector-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.modes-sector-chip {
+  padding: 2px 7px;
+  border-radius: 2px;
+  background: rgba(230, 238, 248, 0.07);
+  border: 1px solid var(--ui-edge-subtle);
+  font-family: var(--ui-font-display);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ui-ink-secondary);
+}
+
+.modes-map-box {
+  padding: 10px 12px 12px;
+  border-radius: 2px;
+  border: 1px solid var(--ui-edge-subtle);
+  background: rgba(7, 11, 16, 0.72);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.modes-map-svg-host {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.modes-map-svg {
+  width: 100%;
+  max-width: 420px;
+  max-height: 168px;
+  border-radius: 2px;
+  display: block;
+}
+
+.modes-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+}
+
+.modes-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 9px 18px;
+  border-radius: 2px;
+  font-family: var(--ui-font-display);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  border: 1px solid var(--ui-edge-strong);
+  background: rgba(16, 22, 31, 0.9);
+  color: var(--ui-ink-primary);
+  transition:
+    background-color var(--ui-dur-fast) linear,
+    border-color var(--ui-dur-fast) linear;
+}
+
+.modes-btn--secondary[data-equipped='true'] {
+  border-color: rgba(91, 214, 138, 0.55);
+  color: var(--ui-confirm);
+}
+
+.modes-btn--primary {
+  border-color: var(--ui-accent);
+  background: linear-gradient(180deg, rgba(229, 169, 60, 0.28), rgba(229, 169, 60, 0.14));
+  color: #fff6e0;
+}
+
+.modes-btn:hover,
+.modes-btn:focus-visible {
+  border-color: var(--ui-accent);
+  outline: none;
+}
+
+@media (max-height: 620px) {
+  .modes-screen {
+    gap: 8px;
+  }
+
+  .modes-inspector {
+    padding: 10px 14px;
+    gap: 6px;
+  }
+
+  .modes-inspector__title {
+    font-size: 20px;
+  }
+
+  .modes-kpis {
+    padding: 4px 0;
+  }
+
+  .modes-kpi__val {
+    font-size: 16px;
+  }
+
+  .modes-ladder-box {
+    padding: 5px 8px;
+    gap: 4px;
+  }
+
+  .modes-ladder-step {
+    padding: 3px 3px 2px;
+    gap: 1px;
+  }
+
+  .modes-ladder-step__icon {
+    height: 16px;
+  }
+
+  .modes-ladder-svg {
+    height: 14px;
+  }
+
+  .modes-map-box {
+    padding: 6px 8px;
+    gap: 4px;
+  }
+
+  .modes-map-svg {
+    max-height: 96px;
+  }
+
+  .modes-btn {
+    padding: 6px 12px;
+    font-size: 12px;
+  }
+}
+
+@media (max-height: 780px) and (min-height: 621px) {
+  .modes-inspector {
+    padding: 12px 18px;
+    gap: 8px;
+  }
+
+  .modes-inspector__title {
+    font-size: 22px;
+  }
+
+  .modes-kpis {
+    padding: 5px 0;
+  }
+
+  .modes-kpi__val {
+    font-size: 17px;
+  }
+
+  .modes-ladder-box {
+    padding: 6px 9px 7px;
+    gap: 4px;
+  }
+
+  .modes-map-box {
+    padding: 6px 9px 8px;
+    gap: 5px;
+  }
+
+  .modes-map-svg {
+    max-height: 112px;
+  }
+
+  .modes-btn {
+    padding: 7px 15px;
+    font-size: 13px;
+  }
+}
+
+@media (max-width: 720px) {
+  .modes-shell {
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    gap: 14px;
+  }
+  .modes-selectors {
+    flex: 0 0 auto;
+    overflow: visible;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .modes-inspector {
+    flex: 0 0 auto;
+    max-height: none;
+    overflow: visible;
+  }
+  .modes-ladder-track {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .modes-selectors {
+    grid-template-columns: 1fr;
+  }
+  .modes-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

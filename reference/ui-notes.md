@@ -240,3 +240,22 @@ Synthesised procedurally through the existing Web Audio engine (routed through t
      8. **Reduced Motion** (`Off` / `On`, defaults to OS `prefers-reduced-motion` if unset)
 5. **Controls Screen**:
    - Grouped under clean tactical section headers (**Movement**, **Combat**, **Stance**, **System**), listing every real action (`Move Forward/Back/Left/Right`, `Sprint`, `Jump`, `Fire`, `Aim Down Sights`, `Reload`, `Lean Left`, `Lean Right`, `Pause / Menu`) with custom drawn physical keycaps (`W`, `A`, `S`, `D`, `Shift`, `Space`, `R`, `Q`, `E`, `Esc`) and custom SVG Left/Right Mouse Button diagrams.
+6. **Game Modes Screen & AI Combat HUD / Outcome States**:
+   - Studied shipped-game reference screenshots saved locally in gitignored `reference/ui/`:
+     - `csgo-mode-select.jpg` (_Counter-Strike: Global Offensive_ mode/map select — `https://interfaceingame.com/screenshots/counter-strike-global-offensive-choose-map`): structured selectable mode cards with clear ruleset parameters and bottom-right primary deploy button.
+     - `mw-shoot-house-hud.jpg` (_Call of Duty: Modern Warfare_ Shoot House HUD — `https://interfaceingame.com/screenshots/call-of-duty-modern-warfare-press-to-switch-weapons`): bottom-left player armor/health bar cluster paired with clean central sightlines and bottom-right ammo block.
+     - `mw-lobby-mode-card.jpg` & `mw-pause-menu.jpg` (_Call of Duty: Modern Warfare_ — `https://interfaceingame.com/screenshots/call-of-duty-modern-warfare-match-beginning/` & `https://interfaceingame.com/screenshots/call-of-duty-modern-warfare-in-game-menu`): dark translucent gunmetal cards, crisp active border highlight, right-side operational summary card, and bottom keycap legend.
+     - `mw-scoreboard.jpg` (_Call of Duty: Modern Warfare_ — `https://interfaceingame.com/screenshots/call-of-duty-modern-warfare-scoreboard/`): clean tabular post-engagement columns (`HOSTILES`, `TIME`, `ACCURACY`, `HEALTH`).
+   - **GAME MODES Screen (`modesScreen.ts`)**: Accessible from the Main Menu's `GAME MODES` button (full keyboard ↑/↓/←/→/Enter/Esc + pointer click/hover). Offers three real, complete single-player modes with zero locked/placeholder cards:
+     - **Tactical Sweep** (`combat`, default): Neutralize 10 armed AI enemy combatants across the expanded Shoot House compound (`100 HP`, standard AI reaction/accuracy).
+     - **Hardpoint Sweep** (`veteran`): High-threat AI combat ruleset with 12 armed AI combatants, faster reaction and tighter suppression/flanking.
+     - **Target Range** (`range`): Dedicated live-fire steel silhouette course (`16` AR500 reactive targets, timed course with auto-reset).
+7. **Gun Game & Practice Overhaul + Dual-Map Operations Selector (Nov 2026)**:
+   - Studied shipped-game reference screenshots saved locally in gitignored `reference/ui/`:
+     - `45-cs2-arms-race-mode-map-select.jpg` (_Counter-Strike 2_ Arms Race / Practice Mode & Map Hub — `https://tradeit.gg/blog/how-to-play-arms-race-in-cs2/`): clean mode tabs (`PRACTICE` vs `ARMS RACE` / `GUN GAME`) paired directly with visual map cards inside one unified deployment screen + bottom-right primary deploy action.
+     - `46-cs2-arms-race-hud-ladder.webp` (_Counter-Strike 2_ Arms Race HUD — `https://tradeit.gg/blog/is-arms-race-in-cs2-where-is-it/`): top-center progression strip pairing compact weapon silhouettes and active tier highlight so the player always knows their current weapon tier and what comes next.
+     - `47-cs2-map-selection-cards.jpg` (_Counter-Strike 2_ Map Cards — `https://esports.gg/news/counter-strike-2/most-popular-maps-cs2/`): side-by-side map tiles with clear visual badges, active selection borders, and immediate deployment.
+   - **Two Game Modes (`src/core/modes.ts`)**:
+     - **Gun Game (`gungame`, default)**: Every elimination immediately promotes the player up an 8-tier weapon progression ladder (`M1911` → `MP5` → `Remington 870` → `HK416` → `AK-47` → `SCAR-H` → `AWM` → `Desert Eagle` final tier) against armed AI combatants.
+     - **Practice (`practice`)**: Unopposed live-fire training course with full Loadout & Armory access (`1`/`2` weapon swap, optics, infinite reserve) against 16 reactive AR500 steel silhouettes that auto-reset on clear.
+   - **Unified Operations / Game Modes & Maps Screen (`modesScreen.ts`)**: Combines selectable **Game Mode** cards, **Arena Map** cards (**Shoot House** & **Cargo Yard** with custom multi-sector architectural schematics), and an interactive **8-Tier Gun Game Progression Ladder** strip into one cohesive deployment screen.

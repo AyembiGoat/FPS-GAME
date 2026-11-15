@@ -1,4 +1,6 @@
 import type { GameEvent, GameInput, GameState } from '../core/game';
+import type { MapId } from '../core/map';
+import type { GameModeId } from '../core/modes';
 import type { Loadout, OpticId, WeaponId, WeaponSlot } from '../core/weapon';
 import type { ScreenName } from './ui';
 import type { GameSettings } from './ui/settings';
@@ -20,6 +22,14 @@ declare global {
       openScreen(screen: ScreenName): void;
       /** Current active UI screen. */
       screen(): ScreenName;
+      /** Read or switch the active single-player game mode, resetting the match when changed. */
+      mode(nextMode?: GameModeId): GameModeId;
+      /** Read or switch the active arena map (`shoot-house` or `cargo-yard`), rebuilding the world cleanly. */
+      map(nextMap?: MapId): MapId;
+      /** Select a specific game mode (and optional map) on the Game Modes & Maps screen. */
+      inspectMode(modeId: GameModeId, mapId?: MapId): void;
+      /** Select a specific arena map card on the Game Modes & Maps screen. */
+      inspectMap(mapId: MapId): void;
       /** Read or update persisted game settings. */
       settings(patch?: Partial<GameSettings>): GameSettings;
       /** Equip a weapon directly in live state and loadout storage, optionally switching to its slot. */

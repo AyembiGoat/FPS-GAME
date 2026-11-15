@@ -544,7 +544,7 @@ export function impact(engine: Engine, distance: number, surface: SurfaceMateria
       decay: 0.032,
       pan,
     });
-  } else if (surface === 'container') {
+  } else if (surface === 'container' || surface === 'container-red' || surface === 'steel') {
     engine.tone('world', at, {
       type: 'triangle',
       from: engine.vary(310, 0.1),
@@ -809,5 +809,189 @@ export function uiConfirm(engine: Engine) {
     from: 880,
     level: 0.105,
     decay: 0.11,
+  });
+}
+
+/**
+ * Spatialized enemy gunfire: exterior muzzle report delayed by speed of sound, slightly
+ * darker/more distant than the player's own first-person rifle, paired with a sharp
+ * supersonic crack so incoming fire is immediately distinguishable and localizable.
+ */
+export function enemyShot(
+  engine: Engine,
+  distance: number,
+  pan: number,
+  weaponId: WeaponId = 'hk416',
+) {
+  const crackAt = engine.now() + Math.min(0.06, distance / 820);
+  const reportAt = engine.now() + distance / SPEED_OF_SOUND;
+  const atten = falloff(Math.max(3, distance));
+  const heavy = weaponId === 'scar-h' || weaponId === 'ak47' || weaponId === 'remington-870';
+
+  // Supersonic passing snap/crack
+  engine.noise('world', crackAt, {
+    filter: 'bandpass',
+    from: engine.vary(3200, 0.09),
+    to: 1450,
+    q: 1.9,
+    level: 0.44 * atten,
+    attack: 0.0006,
+    decay: 0.026,
+    pan,
+  });
+
+  // Exterior muzzle report body
+  engine.noise('world', reportAt, {
+    filter: 'lowpass',
+    from: engine.vary(heavy ? 3600 : 4400, 0.08),
+    to: 340,
+    level: (heavy ? 0.85 : 0.7) * atten,
+    attack: 0.001,
+    decay: heavy ? 0.22 : 0.17,
+    pan,
+  });
+  engine.tone('world', reportAt, {
+    type: 'triangle',
+    from: engine.vary(heavy ? 128 : 158, 0.06),
+    to: 44,
+    level: (heavy ? 0.68 : 0.54) * atten,
+    decay: 0.14,
+    pan,
+  });
+}
+
+/**
+ * Tactile hit confirmation when the player's round strikes an enemy combatant:
+ * heavy kevlar/plate thump for torso/legs, or crisp ballistic helmet ring + snap on headshots.
+ */
+export function enemyHit(engine: Engine, distance: number, pan: number, headshot: boolean) {
+  const at = engine.now() + Math.min(0.04, distance / SPEED_OF_SOUND);
+  const level = Math.max(0.45, falloff(Math.max(4, distance * 0.55)));
+
+  // Solid kevlar / ballistic plate thump
+  engine.tone('world', at, {
+    type: 'triangle',
+    from: engine.vary(235, 0.05),
+    to: 72,
+    level: 0.34 * level,
+    decay: 0.075,
+    pan,
+  });
+  engine.noise('world', at, {
+    filter: 'bandpass',
+    from: engine.vary(1850, 0.08),
+    to: 780,
+    q: 1.6,
+    level: 0.28 * level,
+    decay: 0.045,
+    pan,
+  });
+
+  if (headshot) {
+    // Crisp high-cut ballistic helmet impact ring
+    engine.tone('world', at, {
+      from: engine.vary(2420, 0.03),
+      to: 2180,
+      level: 0.24 * level,
+      decay: 0.12,
+      pan,
+    });
+    engine.noise('world', at, {
+      filter: 'highpass',
+      from: 3400,
+      level: 0.22 * level,
+      decay: 0.024,
+      pan,
+    });
+  }
+}
+
+/** Grounded gear rattle + heavy body drop when an enemy combatant is neutralized. */
+export function enemyDown(engine: Engine, distance: number, pan: number) {
+  const at = engine.now() + Math.min(0.08, distance / SPEED_OF_SOUND) + 0.09;
+  const level = Math.max(0.35, falloff(Math.max(4, distance * 0.65)));
+
+  engine.tone('world', at, {
+    from: 108,
+    to: 44,
+    level: 0.42 * level,
+    decay: 0.16,
+    pan,
+  });
+  engine.noise('world', at + 0.02, {
+    filter: 'lowpass',
+    from: 520,
+    level: 0.3 * level,
+    attack: 0.004,
+    decay: 0.14,
+    pan,
+  });
+  rustle(engine, at + 0.015, 0.06 * level, 0.18);
+}
+
+/** Incoming round striking the player's armor/body: visceral low punch + directional snap. */
+export function playerHit(engine: Engine, pan: number, critical: boolean) {
+  const now = engine.now();
+  engine.tone('world', now, {
+    type: 'triangle',
+    from: 145,
+    to: 42,
+    level: 0.56,
+    decay: 0.14,
+    pan: pan * 0.5,
+  });
+  engine.noise('world', now, {
+    filter: 'bandpass',
+    from: 1650,
+    to: 520,
+    q: 1.3,
+    level: 0.42,
+    attack: 0.0008,
+    decay: 0.065,
+    pan,
+  });
+  if (critical) {
+    // Low-health double heartbeat thump when below 35 HP (plays once per hit, never a drone loop).
+    engine.tone('world', now + 0.14, { from: 72, to: 46, level: 0.34, decay: 0.11 });
+    engine.tone('world', now + 0.32, { from: 66, to: 42, level: 0.26, decay: 0.13 });
+  }
+}
+
+/** Restrained tactical chord stinger when all hostiles are neutralized (`victory`). */
+export function modeVictory(engine: Engine) {
+  const now = engine.now();
+  engine.tone('ui', now, { type: 'triangle', from: 440, level: 0.12, decay: 0.24 });
+  engine.tone('ui', now + 0.07, { type: 'triangle', from: 554.37, level: 0.12, decay: 0.26 });
+  engine.tone('ui', now + 0.14, { type: 'triangle', from: 659.25, level: 0.14, decay: 0.38 });
+}
+
+/** Low sombre descending interval when player HP reaches zero (`defeat`). */
+export function playerDefeat(engine: Engine) {
+  const now = engine.now();
+  engine.tone('ui', now, { type: 'triangle', from: 293.66, to: 261.63, level: 0.14, decay: 0.32 });
+  engine.tone('ui', now + 0.14, {
+    type: 'triangle',
+    from: 220,
+    to: 164.81,
+    level: 0.15,
+    decay: 0.48,
+  });
+}
+
+/** Crisp upward mechanical rack + tactical brass chime when advancing a Gun Game weapon tier. */
+export function tierAdvance(engine: Engine) {
+  const now = engine.now();
+  clack(engine, 'handling', now, { pitch: 2560, level: 0.095, length: 0.028 });
+  engine.tone('ui', now + 0.015, {
+    type: 'triangle',
+    from: 523.25,
+    level: 0.095,
+    decay: 0.09,
+  });
+  engine.tone('ui', now + 0.068, {
+    type: 'triangle',
+    from: 783.99,
+    level: 0.115,
+    decay: 0.16,
   });
 }

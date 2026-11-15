@@ -230,8 +230,25 @@
   transform: scaleX(1);
 }
 
+.hud-segment[data-current='true'] {
+  background: rgba(229, 169, 60, 0.34);
+  box-shadow: inset 0 0 0 1px rgba(229, 169, 60, 0.85);
+}
+
 .hud-objective[data-cleared='true'] .hud-segment::after {
   background: var(--ui-confirm);
+}
+
+.hud-objective__next {
+  font-family: var(--ui-font-display);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: rgba(235, 198, 118, 0.94);
+  text-align: center;
+  line-height: 1.1;
+  padding-top: 1px;
 }
 
 /* Dynamic Crosshair */
@@ -385,7 +402,7 @@
 .hud-stance {
   position: fixed;
   left: var(--ui-safe-x);
-  bottom: var(--ui-safe-y);
+  bottom: calc(var(--ui-safe-y) + 78px);
   transform: scale(var(--ui-hud-scale));
   transform-origin: bottom left;
   display: flex;
@@ -473,6 +490,19 @@
 
 .hud-slot-chip[data-active='true'] .ui-keycap {
   border-color: var(--ui-accent);
+  color: var(--ui-accent);
+}
+
+.hud-gg-next {
+  padding: 3px 10px;
+  border-radius: 2px;
+  background: rgba(14, 20, 28, 0.86);
+  border: 1px solid rgba(229, 169, 60, 0.55);
+  font-family: var(--ui-font-display);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
   color: var(--ui-accent);
 }
 
@@ -841,6 +871,22 @@
 
 .hud-banner[data-open='true'] {
   opacity: 1;
+  pointer-events: auto;
+}
+
+.hud-banner[data-tone='defeat'] .hud-banner__eyebrow {
+  color: var(--ui-danger);
+}
+
+.hud-banner[data-tone='defeat'] .hud-banner__rule {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(229, 83, 75, 0.85) 25%,
+    #ff8d85 50%,
+    rgba(229, 83, 75, 0.85) 75%,
+    transparent
+  );
 }
 
 .hud-banner__rule {
@@ -903,11 +949,15 @@
 .hud-banner__stats {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  max-width: 440px;
+  max-width: 520px;
   margin: 0 auto 12px;
   border-top: 1px solid var(--ui-edge-subtle);
   border-bottom: 1px solid var(--ui-edge-subtle);
   padding: 8px 0;
+}
+
+.hud-banner__stats[data-columns='4'] {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .hud-banner__stat {
@@ -988,4 +1038,185 @@
 
 .ui-root[data-reduced-motion='true'] .hud-reload-prompt {
   transform: translate(-50%, 0) scale(var(--ui-hud-scale));
+}
+
+/* Incoming Damage Edge Vignette & Directional Hit Arc */
+.hud-damage-vignette {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(
+    78% 72% at 50% 50%,
+    rgba(195, 36, 32, 0) 56%,
+    rgba(185, 32, 28, 0.42) 86%,
+    rgba(140, 18, 16, 0.76) 100%
+  );
+  transition: opacity 90ms linear;
+}
+
+.hud-damage-arc {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  width: 210px;
+  height: 210px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  opacity: 0;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.65));
+}
+
+/* Bottom-Left Operator Vitals Card */
+.hud-vitals {
+  position: fixed;
+  left: var(--ui-safe-x);
+  bottom: var(--ui-safe-y);
+  transform: scale(var(--ui-hud-scale));
+  transform-origin: bottom left;
+  min-width: 236px;
+  padding: 10px 14px 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.hud-vitals__top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.hud-vitals__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--ui-font-display);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ui-ink-secondary);
+}
+
+.hud-vitals__icon {
+  width: 15px;
+  height: 15px;
+  color: var(--ui-accent);
+}
+
+.hud-vitals[data-state='critical'] .hud-vitals__icon {
+  color: var(--ui-danger);
+}
+
+.hud-vitals__num-wrap {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.hud-vitals__num {
+  font-family: var(--ui-font-display);
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 0.92;
+  color: var(--ui-ink-primary);
+}
+
+.hud-vitals[data-state='warning'] .hud-vitals__num {
+  color: var(--ui-warning);
+}
+
+.hud-vitals[data-state='critical'] .hud-vitals__num {
+  color: var(--ui-danger);
+}
+
+.hud-vitals__max {
+  font-family: var(--ui-font-display);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ui-ink-muted);
+}
+
+.hud-vitals__bar {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 3px;
+}
+
+.hud-vitals__seg {
+  height: 6px;
+  border-radius: 1px;
+  background: rgba(230, 238, 248, 0.14);
+  transition: background-color var(--ui-dur-fast) linear;
+}
+
+.hud-vitals__seg[data-filled='true'] {
+  background: #e6ecf4;
+}
+
+.hud-vitals[data-state='warning'] .hud-vitals__seg[data-filled='true'] {
+  background: var(--ui-warning);
+}
+
+.hud-vitals[data-state='critical'] .hud-vitals__seg[data-filled='true'] {
+  background: var(--ui-danger);
+}
+
+.hud-hit-marker[data-kind='enemy'] .hud-hit-marker__base {
+  stroke: #f5d380;
+}
+
+.hud-feed__item[data-headshot='true'] {
+  border-left-color: var(--ui-danger);
+}
+
+/* Interactive Outcome Action Buttons inside Banner */
+.hud-banner__actions {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.hud-banner__actions[hidden],
+.hud-banner__reset[hidden],
+.hud-banner__stat[hidden] {
+  display: none;
+}
+
+.hud-banner__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 2px;
+  border: 1px solid var(--ui-edge-strong);
+  background: rgba(14, 20, 28, 0.92);
+  color: var(--ui-ink-primary);
+  font-family: var(--ui-font-display);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition:
+    background-color var(--ui-dur-fast) linear,
+    border-color var(--ui-dur-fast) linear;
+}
+
+.hud-banner__btn:hover,
+.hud-banner__btn:focus-visible {
+  border-color: var(--ui-accent);
+  background: rgba(28, 36, 48, 0.96);
+  outline: none;
+}
+
+.hud-banner__btn--primary {
+  border-color: var(--ui-accent);
+  background: linear-gradient(180deg, rgba(229, 169, 60, 0.24), rgba(229, 169, 60, 0.12));
+  color: #fff6e0;
 }

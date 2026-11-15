@@ -137,12 +137,22 @@ export interface WeaponSpec {
   readonly aimRecoilFactor: number;
   /** Number of projectiles per trigger pull (1 for rifles/pistols, 8 for buckshot). */
   readonly pellets: number;
-  /** Cone half-angle in radians for multi-pellet buckshot at hipfire (0 for single-projectile). */
+  /**Cone half-angle in radians for multi-pellet buckshot at hipfire (0 for single-projectile). */
   readonly pelletSpread: number;
   /** Spread multiplier while aimed down sights. */
   readonly aimSpreadFactor: number;
   /** Seconds to draw and ready the weapon after switching slots. */
   readonly equipTime: number;
+  /** Base torso damage per projectile (per pellet for shotguns) within `falloffStart`. */
+  readonly damage: number;
+  /** Multiplier applied on head hits (`1.5`..`2.0`). */
+  readonly headshotMultiplier: number;
+  /** Distance in metres where damage falloff begins. */
+  readonly falloffStart: number;
+  /** Distance in metres where damage reaches `minDamageScale`. */
+  readonly falloffEnd: number;
+  /** Minimum damage multiplier at and beyond `falloffEnd`. */
+  readonly minDamageScale: number;
 }
 
 export const HK416: WeaponSpec = {
@@ -168,6 +178,11 @@ export const HK416: WeaponSpec = {
   pelletSpread: 0,
   aimSpreadFactor: 1,
   equipTime: 0.34,
+  damage: 34,
+  headshotMultiplier: 1.85,
+  falloffStart: 28,
+  falloffEnd: 75,
+  minDamageScale: 0.68,
 };
 
 export const AK47: WeaponSpec = {
@@ -193,6 +208,11 @@ export const AK47: WeaponSpec = {
   pelletSpread: 0,
   aimSpreadFactor: 1,
   equipTime: 0.36,
+  damage: 42,
+  headshotMultiplier: 2.4,
+  falloffStart: 30,
+  falloffEnd: 80,
+  minDamageScale: 0.7,
 };
 
 export const SCAR_H: WeaponSpec = {
@@ -218,6 +238,11 @@ export const SCAR_H: WeaponSpec = {
   pelletSpread: 0,
   aimSpreadFactor: 1,
   equipTime: 0.36,
+  damage: 48,
+  headshotMultiplier: 2.2,
+  falloffStart: 38,
+  falloffEnd: 100,
+  minDamageScale: 0.76,
 };
 
 export const MP5: WeaponSpec = {
@@ -243,6 +268,11 @@ export const MP5: WeaponSpec = {
   pelletSpread: 0,
   aimSpreadFactor: 1,
   equipTime: 0.28,
+  damage: 28,
+  headshotMultiplier: 1.85,
+  falloffStart: 16,
+  falloffEnd: 42,
+  minDamageScale: 0.55,
 };
 
 export const REMINGTON_870: WeaponSpec = {
@@ -268,6 +298,11 @@ export const REMINGTON_870: WeaponSpec = {
   pelletSpread: 0.038,
   aimSpreadFactor: 0.68,
   equipTime: 0.38,
+  damage: 19,
+  headshotMultiplier: 1.5,
+  falloffStart: 10,
+  falloffEnd: 28,
+  minDamageScale: 0.35,
 };
 
 export const AWM: WeaponSpec = {
@@ -293,6 +328,11 @@ export const AWM: WeaponSpec = {
   pelletSpread: 0,
   aimSpreadFactor: 1,
   equipTime: 0.42,
+  damage: 118,
+  headshotMultiplier: 2.2,
+  falloffStart: 80,
+  falloffEnd: 220,
+  minDamageScale: 0.88,
 };
 
 /** Semi-automatic pistol: one shot per trigger pull. */
@@ -319,6 +359,11 @@ export const M1911: WeaponSpec = {
   pelletSpread: 0,
   aimSpreadFactor: 1,
   equipTime: 0.25,
+  damage: 36,
+  headshotMultiplier: 1.9,
+  falloffStart: 15,
+  falloffEnd: 38,
+  minDamageScale: 0.58,
 };
 
 export const DESERT_EAGLE: WeaponSpec = {
@@ -344,6 +389,11 @@ export const DESERT_EAGLE: WeaponSpec = {
   pelletSpread: 0,
   aimSpreadFactor: 1,
   equipTime: 0.29,
+  damage: 62,
+  headshotMultiplier: 2.1,
+  falloffStart: 22,
+  falloffEnd: 55,
+  minDamageScale: 0.65,
 };
 
 export const WEAPONS: readonly WeaponSpec[] = [
@@ -559,6 +609,38 @@ export function equipLoadout(
 }
 
 /**
+ * Immediately equip a specific firearm with a fresh loaded magazine and crisp draw transition
+ * (used by Gun Game weapon-tier promotions on each kill while preserving custom optic mounts).
+ */
+export function equipSingleWeapon(state: WeaponState, weaponId: WeaponId): WeaponState {
+  const spec = getWeaponSpec(weaponId);
+  const slot = spec.slot;
+  const nextLoadout: Loadout =
+    slot === 'primary'
+      ? { ...state.loadout, primary: weaponId }
+      : { ...state.loadout, secondary: weaponId };
+  const slotRounds: Record<WeaponSlot, number> = {
+    ...state.slotRounds,
+    [slot]: spec.magazineSize,
+  };
+  return {
+    ...state,
+    weaponId,
+    activeSlot: slot,
+    loadout: nextLoadout,
+    slotRounds,
+    rounds: spec.magazineSize,
+    cooldown: 0,
+    reloadRemaining: 0,
+    switchRemaining: spec.equipTime,
+    recoil: 0,
+    aim: 0,
+    zoomStage: 0,
+    triggerHeld: false,
+  };
+}
+
+/**
  * Compute deterministic unit ray directions for one trigger pull. Single-projectile guns
  * return one exact ray; shotguns return a tight core pellet plus a deterministic spread ring.
  */
@@ -592,6 +674,18 @@ export function pelletDirections(
     directions.push(forward(yaw + offsetYaw, pitch + offsetPitch));
   }
   return directions;
+}
+
+export function weaponProjectileDamage(
+  spec: WeaponSpec,
+  distance: number,
+  hitZone: 'head' | 'torso' | 'legs',
+): number {
+  const span = Math.max(0.001, spec.falloffEnd - spec.falloffStart);
+  const t = clamp((distance - spec.falloffStart) / span, 0, 1);
+  const rangeScale = 1 + (spec.minDamageScale - 1) * t;
+  const zoneScale = hitZone === 'head' ? spec.headshotMultiplier : hitZone === 'legs' ? 0.85 : 1;
+  return spec.damage * rangeScale * zoneScale;
 }
 
 export function stepWeapon(

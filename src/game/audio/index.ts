@@ -62,6 +62,27 @@ export function createAudio() {
     impact(distance: number, surface: SurfaceMaterial, pan: number) {
       if (engine) sounds.impact(engine, distance, surface, pan);
     },
+    enemyShot(distance: number, pan: number, weaponId: WeaponId) {
+      if (engine) sounds.enemyShot(engine, distance, pan, weaponId);
+    },
+    enemyHit(distance: number, pan: number, headshot: boolean) {
+      if (engine) sounds.enemyHit(engine, distance, pan, headshot);
+    },
+    enemyDown(distance: number, pan: number) {
+      if (engine) sounds.enemyDown(engine, distance, pan);
+    },
+    playerHit(pan: number, critical: boolean) {
+      if (engine) sounds.playerHit(engine, pan, critical);
+    },
+    modeVictory() {
+      if (engine && uiCuesEnabled) sounds.modeVictory(engine);
+    },
+    tierAdvance() {
+      if (engine && uiCuesEnabled) sounds.tierAdvance(engine);
+    },
+    playerDefeat() {
+      if (engine && uiCuesEnabled) sounds.playerDefeat(engine);
+    },
     dryFire() {
       if (engine) sounds.dryFire(engine);
     },
@@ -150,6 +171,24 @@ const MEASURED: Record<string, (engine: Engine) => void> = {
   plywoodAt10m: (engine) => {
     sounds.impact(engine, 10, 'plywood', 0);
   },
+  enemyShotAt15m: (engine) => {
+    sounds.enemyShot(engine, 15, 0, 'hk416');
+  },
+  enemyHitAt10m: (engine) => {
+    sounds.enemyHit(engine, 10, 0, false);
+  },
+  enemyHeadshotAt10m: (engine) => {
+    sounds.enemyHit(engine, 10, 0, true);
+  },
+  enemyDownAt10m: (engine) => {
+    sounds.enemyDown(engine, 10, 0);
+  },
+  playerHit: (engine) => {
+    sounds.playerHit(engine, 0, false);
+  },
+  modeVictory: sounds.modeVictory,
+  tierAdvance: sounds.tierAdvance,
+  playerDefeat: sounds.playerDefeat,
   uiHover: sounds.uiHover,
   uiSelect: sounds.uiSelect,
   uiBack: sounds.uiBack,

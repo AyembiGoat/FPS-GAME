@@ -187,3 +187,23 @@ Each firearm class uses a distinct synthesised acoustic recipe routed to the `we
     - Grounded perimeter props (wooden pallets, tire/concrete jersey barriers, shipping container ribs) keeping total draw calls low (~12 meshes) and `1.9 m+` clear fall space behind all **14 targets**.
     - Shadow frustum expanded from `±24 m` to `±34 m` (with crisp `2048×2048` shadow map) to cover the full 48 m × 36 m yard cleanly.
     - Bot pathing (`src/core/bot.ts`) verified to navigate and clear all **14 targets** across short, mid, and long range!
+
+### Phase 7: Procedural Tactical Enemy Operators & Expanded 68 m × 54 m Compound
+
+- Studied local reference photos saved in gitignored `reference/arsenal/`:
+  - `operator-plate-carrier.jpg` (RTS Tactical ballistic helmet + plate carrier operator reference): ~1:7.5 head-to-body ratio (`1.78 m` standing height), high-cut tactical helmet (`0.24 m` width) with front NVG mount, structured plate carrier (`0.36 m × 0.38 m`) with front magazine pouches over combat shirt, articulated upper/forearms in a two-handed rifle ready/aim stance, battle belt, and utility trousers + boots.
+  - `modular-cqb-shoot-house.jpg` & `t1g-shoot-house-interior.jpg` (modular CQB shoot house & T1G interior partitions): dark timber-framed plywood breach rooms, waist-high concrete barriers, shipping containers, and clear sightline breaks between CQB rooms, central container yard, north command annex, and east sniper lane.
+- **Procedural 3D Enemy Operator (`src/game/enemies.ts`)**:
+  - Built exclusively from shared `src/game/materials/` PBR recipes (`polymer-black`, `anodized-fde`, `chassis-od`, `sleeve`, `glove`, `steel-dark`, `gun-steel`, `walnut`) with distinct silhouette/gear palettes per archetype (`assaulter`, `breacher`, `marksman`) that read clearly against pale concrete (`concrete-wall`) and warm birch (`plywood`) without arcade glow outlines or floating health bars.
+  - Pre-merged anatomical sub-rigs (`torso`, `head`, `leftLeg`, `rightLeg`, `armsAndWeapon`) keep draw calls bounded while supporting articulated idle breathing, walk/run leg stride, aim-on-target pitch/yaw + muzzle flash, hit flinch, and grounded collapse on death matching `src/core` hitboxes.
+- **Expanded Tactical Compound (`68 m × 54 m`, `src/core/maps/shootHouse.ts`)**:
+  - Expanded from `52 m × 40 m` to `68 m × 54 m` (`x: -34..34, z: -27..27`) with four interconnected tactical sectors: SouthStaging & Courtyard (`z: 14..26`), West CQB Breach House (`x: -32..-10, z: -12..12`), Central Container & Command Yard (`x: -10..12, z: -16..14`), North Bastion & Flank Trench (`x: -32..14, z: -26..-14`), and East 50 m Marksman Alley (`x: 14..32, z: -25..24`).
+
+### Phase 8: Dual-Map Overhaul (`Shoot House` & `Cargo Yard`) + Procedural Port Materials
+
+- Studied industrial port terminal and brick warehouse reference photos saved in gitignored `reference/arsenal/`:
+  - `port-terminal-asphalt-yard.jpg` (`https://istockphoto.com/videos/shipping-container-yard`): dark compacted port asphalt pavement with fine limestone aggregate speckles, subtle heavy-truck tyre tracks, and tarred expansion joints contrasting against painted maritime containers.
+  - `cargo-containers-red-blue.jpg` (`https://istockphoto.com/photos/red-shipping-container`): vertical trapezoidal ribs (`~0.20 m` pitch) in weathered cargo-oxide red and maritime slate-blue with lower-edge grime and handling scuffs.
+  - `brick-warehouse-wall.jpg` (`https://shutterstock.com/search/brick-warehouse-interior?image_type=photo`): running-bond industrial clay brick masonry with recessed mortar joints and dark painted steel portal columns/canopy girders.
+- Added four procedural PBR recipes in `src/game/materials/recipes.ts`: `asphalt-floor`, `container-red`, `brick-wall`, and `girder-steel`, verified via `npm run playtest -- --materials`.
+- Overhauled **`Shoot House`** (`72 m × 58 m`) and created **`Cargo Yard`** (`74 m × 60 m`) in `src/core/maps/`, registered in `src/core/maps/index.ts`.
